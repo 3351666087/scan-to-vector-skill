@@ -1,0 +1,6 @@
+interface:
+  display_name: "Scan to Vector"
+  short_description: "Rebuild scans as searchable, typeset vector PDFs"
+  default_prompt: "Use $scan-to-vector to reconstruct these scans as a searchable, newly typeset PDF, preserving content and checking every source page."
+policy:
+  allow_implicit_invocation: true
