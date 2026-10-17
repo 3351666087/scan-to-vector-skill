@@ -1,0 +1,45 @@
+{
+  "document_id": "playfair-1786-denmark-norway",
+  "source_file": "source/scan.png",
+  "source_sha256": "30a7162e8bffb3ac4c0068078e54b0307a633427351270b3a43aded05d1ca810",
+  "source_page_count": 1,
+  "source_origin": {
+    "work": "William Playfair, The Commercial and Political Atlas (London, 1786): Exports and Imports to and from Denmark & Norway from 1700 to 1780",
+    "file": "https://commons.wikimedia.org/wiki/File:Playfair_TimeSeries-2.png",
+    "license": "Public domain"
+  },
+  "build_command": "python rebuilt/digitize.py && python rebuilt/build.py",
+  "output": "rebuilt/playfair-1786.pdf",
+  "data": {
+    "file": "rebuilt/data.csv",
+    "unit": "£10,000 (the chart's right-hand scale)",
+    "method": "Gridlines calibrated on the scan; each line traced column by column by colour, then sampled at every year.",
+    "precision": "Readings of a hand-engraved, hand-coloured plate; treat as about ±1 unit."
+  },
+  "pages": [
+    {
+      "source_page": 1,
+      "printed_label": null,
+      "disposition": "included",
+      "content_file": "rebuilt/build.py",
+      "target_ids": ["chart-denmark-norway-1700-1780"],
+      "output_pages": [1],
+      "review": {
+        "checked": [
+          "Curves and both balance areas are drawn only from data.csv; the redraw overlays the engraved lines across 1700-1780.",
+          "Exports overtake imports between 1754 and 1755, as on the plate.",
+          "Grid, frame, axis labels, title, caption and imprint placed at measured scan positions; overlay checked at 2067 px.",
+          "Spaced capitals keep letter gaps under 0.13 em, so DENMARK, NORWAY and ENGLAND extract as whole words.",
+          "Structural audit: 0 issues, 0 warnings; both fonts embedded (review/audit.json)."
+        ],
+        "editorial_decisions": [
+          "Engraved lettering set in Libre Caslon Text; heavier engraved capitals approximated with a thin stroke.",
+          "Old-style figures and the superscripts in '1st' and 'Wm.' set as lining figures and ordinary letters.",
+          "Curve labels are set letter by letter along their lines, so their extracted text order is approximate."
+        ],
+        "raster_regions": [],
+        "unresolved": []
+      }
+    }
+  ]
+}

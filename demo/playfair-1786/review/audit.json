@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "command": "audit",
+  "source": "demo/playfair-1786/rebuilt/playfair-1786.pdf",
+  "page_count": 1,
+  "page_numbers": "one-based; *_index is zero-based",
+  "summary": {
+    "text_chars": 525,
+    "image_count": 0,
+    "vector_drawing_count": 54,
+    "font_count": 2,
+    "link_count": 0,
+    "bookmark_count": 0,
+    "issue_count": 0,
+    "warning_count": 0
+  },
+  "pages": [
+    {
+      "page": 1,
+      "width_pt": 720.0,
+      "height_pt": 531.9013061523438,
+      "rotation": 0,
+      "text_chars": 525,
+      "non_whitespace_text_chars": 365,
+      "image_count": 0,
+      "vector_drawing_count": 54,
+      "font_xrefs": [
+        8,
+        14
+      ],
+      "link_count": 0
+    }
+  ],
+  "fonts": [
+    {
+      "xref": 8,
+      "name": "UYOPWY+Libre Caslon Text Regular",
+      "type": "Type0",
+      "extension": "ttf",
+      "encoding": "Identity-H",
+      "standard_base14": false,
+      "embedded": true,
+      "embedding": "font_program",
+      "embedded_bytes": 9481,
+      "pages": [
+        1
+      ],
+      "resource_names": [
+        "roman"
+      ]
+    },
+    {
+      "xref": 14,
+      "name": "VNADHM+Libre Caslon Text Italic",
+      "type": "Type0",
+      "extension": "ttf",
+      "encoding": "Identity-H",
+      "standard_base14": false,
+      "embedded": true,
+      "embedding": "font_program",
+      "embedded_bytes": 11714,
+      "pages": [
+        1
+      ],
+      "resource_names": [
+        "italic"
+      ]
+    }
+  ],
+  "links": [],
+  "bookmarks": [],
+  "count_definitions": {
+    "text_chars": "Characters in extracted page text, including whitespace; not an OCR quality score.",
+    "image_count": "Displayed image occurrences, including inline images; repeated uses count separately.",
+    "vector_drawing_count": "Extracted vector drawing paths; text is counted separately.",
+    "fonts": "Page font resources, which may include unused fonts."
+  },
+  "issues": [],
+  "warnings": [],
+  "link_checks": [],
+  "links_root": null,
+  "limitations": [
+    "Structural checks do not verify OCR accuracy, reading order, completeness, or agreement with a source scan. Visual review is still required.",
+    "Text, image, and drawing counts do not establish that a PDF is fully vectorized. Text can be invisible, and images can be appropriate photographs or illustrations.",
+    "Text bounds are extraction metrics with a 2-point tolerance; they do not prove visual clipping, overlap, legibility, or correct layout.",
+    "Font checks inspect page font resources, including resources that may be unused. An embedded font does not establish correct glyph mapping or rendering.",
+    "Link checks do not use the network, execute actions, or recursively audit linked documents. External files are checked only within an explicit --links-root."
+  ],
+  "thresholds": {
+    "low_text_non_whitespace_chars": 20,
+    "text_bounds_tolerance_pt": 2.0
+  },
+  "status": "no_structural_issues_found"
+}
