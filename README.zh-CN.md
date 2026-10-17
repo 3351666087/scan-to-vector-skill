@@ -18,6 +18,7 @@
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-ready-d97757?style=flat-square">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
 </p>
 
 ---
@@ -156,3 +157,7 @@ README 里的动画也由这些文件生成。动画中的重建页把文字转�
 - Oliver Byrne，*The First Six Books of the Elements of Euclid*（1847），扫描件来自 [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:First_six_books_of_the_elements_of_Euclid_1847_Byrne.djvu) / [Internet Archive](https://archive.org/details/firstsixbooksofe00byrn)，公有领域。
 - William Playfair，*The Commercial and Political Atlas*（1786），扫描件来自 [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Playfair_TimeSeries-2.png)，公有领域。
 - [Libre Caslon Text](https://github.com/thundernixon/Libre-Caslon)，SIL Open Font License（[`demo/fonts/OFL.txt`](demo/fonts/OFL.txt)）。
+
+## 许可证
+
+代码和文档以 [MIT 许可证](LICENSE) 发布。演示所用扫描件属于公有领域；Libre Caslon Text 字体仍遵循其自身的 SIL Open Font License（[`demo/fonts/OFL.txt`](demo/fonts/OFL.txt)）。

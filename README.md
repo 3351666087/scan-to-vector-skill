@@ -18,6 +18,7 @@
   <img alt="Works with Claude Code" src="https://img.shields.io/badge/Claude%20Code-ready-d97757?style=flat-square">
   <img alt="Works with Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
 </p>
 
 ---
@@ -156,3 +157,7 @@ The tests generate synthetic PDFs on the fly and need no real books.
 - Oliver Byrne, *The First Six Books of the Elements of Euclid* (1847), scan via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:First_six_books_of_the_elements_of_Euclid_1847_Byrne.djvu) / [Internet Archive](https://archive.org/details/firstsixbooksofe00byrn), public domain.
 - William Playfair, *The Commercial and Political Atlas* (1786), scan via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Playfair_TimeSeries-2.png), public domain.
 - [Libre Caslon Text](https://github.com/thundernixon/Libre-Caslon), SIL Open Font License ([`demo/fonts/OFL.txt`](demo/fonts/OFL.txt)).
+
+## License
+
+Code and documentation are released under the [MIT License](LICENSE). The bundled demo scans are in the public domain, and Libre Caslon Text keeps its own SIL Open Font License ([`demo/fonts/OFL.txt`](demo/fonts/OFL.txt)).
