@@ -1,0 +1,45 @@
+{
+  "document_id": "byrne-euclid-1847-I-11",
+  "source_file": "source/scan.jpg",
+  "source_sha256": "0262f49808794475b86cedf41e85a8e64fede76e18788a864518ad5a90fa071d",
+  "source_page_count": 1,
+  "source_origin": {
+    "work": "Oliver Byrne, The First Six Books of the Elements of Euclid (London: William Pickering, 1847)",
+    "file": "https://commons.wikimedia.org/wiki/File:First_six_books_of_the_elements_of_Euclid_1847_Byrne.djvu",
+    "page": "DjVu page 45, rendered by Wikimedia at 1920 px wide",
+    "scan_credit": "https://archive.org/details/firstsixbooksofe00byrn",
+    "license": "Public domain"
+  },
+  "build_command": "python rebuilt/build.py",
+  "output": "rebuilt/byrne-euclid-I-11.pdf",
+  "pages": [
+    {
+      "source_page": 1,
+      "printed_label": "11",
+      "disposition": "included",
+      "content_file": "rebuilt/build.py",
+      "target_ids": ["prop-I-11-enunciation", "prop-I-11-figure", "prop-I-11-construction", "prop-I-11-proof"],
+      "output_pages": [1],
+      "review": {
+        "checked": [
+          "Every word and inline symbol placed at its measured scan position; registration checked by overlaying the rebuilt page on the scan at 1920 px.",
+          "Figure geometry (apex, base vertices, foot, 148 px angle radius, dotted extensions) matched against colour-segmented scan components.",
+          "Text extraction reads in order with word spaces.",
+          "Structural audit: 0 issues, 0 warnings; both fonts embedded (review/audit.json)."
+        ],
+        "editorial_decisions": [
+          "Long s (ſ) modernised to s: the open Caslon face has no ſ, and modern spelling keeps 'straight', 'shall', 'construct' and 'const.' searchable.",
+          "The c-t ligature in 'construct' and the old-style figures are set as ordinary letters and lining figures.",
+          "Inks white-balanced against the paper colour (239, 235, 210) rather than copied from the yellowed scan."
+        ],
+        "raster_regions": [
+          "Engraved initial F, kept as a cleaned crop of scan region (64, 460)-(290, 712): rebuilt/figures/initial-F.png."
+        ],
+        "not_text": [
+          "∴ and ⊥ are drawn as vector shapes because the text face lacks them, so they are not searchable."
+        ],
+        "unresolved": []
+      }
+    }
+  ]
+}
