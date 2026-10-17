@@ -63,7 +63,28 @@ agent 先标定雕版网格，再追踪两条曲线，把**每条曲线 81 个�
 
 ## 安装
 
-把技能目录复制到你所用 agent 的技能目录即可。
+### Claude Code 插件（推荐）
+
+在 Claude Code 会话里运行：
+
+```text
+/plugin marketplace add 3351666087/scan-to-vector-skill
+/plugin install scan-to-vector@scan-to-vector-skill
+```
+
+在终端里，同样的两步是 `claude plugin marketplace add 3351666087/scan-to-vector-skill` 和 `claude plugin install scan-to-vector@scan-to-vector-skill`。以后用 `claude plugin update scan-to-vector@scan-to-vector-skill` 更新。插件里的技能会带上插件名前缀，所以列表里显示为 `scan-to-vector:scan-to-vector`；直接用自然语言提出需求，效果相同。
+
+### Claude Code 和 Codex 一行安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3351666087/scan-to-vector-skill/main/install.sh | bash
+```
+
+[`install.sh`](install.sh) 会检测本机装了哪些 agent，把技能复制到 `~/.claude/skills` 和/或 `~/.codex/skills`。想自己指定目标，把命令结尾换成 `| bash -s -- --claude`、`--codex` 或 `--dir DIR`（其他客户端的技能目录）。再次运行会更新它装过的副本；你改动过的副本不会被覆盖，除非加上 `--force`，此时旧副本会先移到技能目录旁边的 `skill-backups/`。想先读一遍脚本再运行，可以克隆仓库后执行 `./install.sh`。
+
+插件和 `~/.claude/skills` 里的副本二选一即可，两者都装的话 Claude Code 会列出两个同名技能。
+
+### 手动复制
 
 ```bash
 git clone https://github.com/3351666087/scan-to-vector-skill.git
@@ -75,10 +96,12 @@ git clone https://github.com/3351666087/scan-to-vector-skill.git
 | Codex | `mkdir -p ~/.codex/skills && cp -R scan-to-vector-skill/skills/scan-to-vector ~/.codex/skills/` |
 | 其他 | 把 `skills/scan-to-vector/` 复制到客户端加载 Agent Skills 的目录 |
 
-附带的 PDF 辅助脚本需要 Python 3.10+，以及 PyMuPDF 和 Pillow：
+### Python 依赖
+
+不论用哪种方式安装，附带的 PDF 辅助脚本都需要 Python 3.10+，以及 PyMuPDF 和 Pillow（缺少时 `install.sh` 会给出提示）：
 
 ```bash
-python3 -m pip install -r scan-to-vector-skill/skills/scan-to-vector/requirements.txt
+python3 -m pip install "PyMuPDF>=1.28.2,<2" "Pillow>=12.3.0,<13"
 ```
 
 技能不捆绑 OCR 和排版引擎。agent 会优先使用项目里已有的工具（Tesseract、LaTeX、HTML 转 PDF 渲染器、PyMuPDF 等），没有的话再按任务选择。

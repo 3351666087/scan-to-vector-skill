@@ -63,7 +63,28 @@ If you only need searchable text on top of the scan, use an OCR layer: it is fas
 
 ## Install
 
-Copy the skill folder into your agent's skills directory.
+### Claude Code plugin (recommended)
+
+In a Claude Code session:
+
+```text
+/plugin marketplace add 3351666087/scan-to-vector-skill
+/plugin install scan-to-vector@scan-to-vector-skill
+```
+
+From a shell, the same two steps are `claude plugin marketplace add 3351666087/scan-to-vector-skill` and `claude plugin install scan-to-vector@scan-to-vector-skill`. Update later with `claude plugin update scan-to-vector@scan-to-vector-skill`. Plugin skills are prefixed with the plugin name, so the skill is listed as `scan-to-vector:scan-to-vector`; asking for it in plain language works the same.
+
+### One-line install for Claude Code and Codex
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3351666087/scan-to-vector-skill/main/install.sh | bash
+```
+
+[`install.sh`](install.sh) copies the skill into `~/.claude/skills` and/or `~/.codex/skills`, for each agent it finds on the machine. To pick the target yourself, end the command with `| bash -s -- --claude`, `--codex` or `--dir DIR` (the skills folder of any other client). Running it again updates a copy it installed. A copy you have edited is left alone unless you add `--force`, which first moves it to `skill-backups/` next to the skills folder. To read the script before running it, clone the repository and run `./install.sh`.
+
+Use the plugin or a copy in `~/.claude/skills`, not both, or Claude Code lists the skill twice.
+
+### Manual copy
 
 ```bash
 git clone https://github.com/3351666087/scan-to-vector-skill.git
@@ -75,10 +96,12 @@ git clone https://github.com/3351666087/scan-to-vector-skill.git
 | Codex | `mkdir -p ~/.codex/skills && cp -R scan-to-vector-skill/skills/scan-to-vector ~/.codex/skills/` |
 | Others | copy `skills/scan-to-vector/` into any directory your client loads Agent Skills from |
 
-The bundled PDF helper needs Python 3.10+ with PyMuPDF and Pillow:
+### Python dependencies
+
+The bundled PDF helper needs Python 3.10+ with PyMuPDF and Pillow, whichever way you installed the skill (`install.sh` prints this reminder when they are missing):
 
 ```bash
-python3 -m pip install -r scan-to-vector-skill/skills/scan-to-vector/requirements.txt
+python3 -m pip install "PyMuPDF>=1.28.2,<2" "Pillow>=12.3.0,<13"
 ```
 
 OCR and typesetting engines are not bundled. The agent uses what your project already has (Tesseract, LaTeX, an HTML-to-PDF renderer, PyMuPDF and so on) or chooses one for the job.
