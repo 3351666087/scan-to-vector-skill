@@ -26,6 +26,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from canvas import reading_order  # noqa: E402
+from shapes import chroma_clusters  # noqa: E402
+
 try:
     from scipy import ndimage as ndi
 except ImportError:  # pragma: no cover - degraded mode without scipy
@@ -66,7 +70,52 @@ def find_page_quad(rgb):
     s, d = xs + ys, xs - ys
     corners = [(xs[np.argmin(s)], ys[np.argmin(s)]), (xs[np.argmax(d)], ys[np.argmax(d)]),
                (xs[np.argmax(s)], ys[np.argmax(s)]), (xs[np.argmin(d)], ys[np.argmin(d)])]
+    corners = fit_sides(page, corners)
     return [(float(x) * 4 + 2, float(y) * 4 + 2) for x, y in corners]
+
+
+def fit_sides(page, corners):
+    """Refine rough corners: fit a straight line to each edge of the sheet (ignoring the
+    worst quarter of edge points, e.g. where a shadow eats a corner) and intersect them."""
+    h, w = page.shape
+    edge = page & ~ndi.binary_erosion(page)
+    edge[[0, -1], :] = False
+    edge[:, [0, -1]] = False
+    ys, xs = np.nonzero(edge)
+    P = np.stack([xs, ys], 1).astype(float)
+    C = np.array(corners, float)
+    if len(P) < 80:
+        return corners
+
+    def seg_dist(a, b):
+        ab = b - a
+        t = np.clip(((P - a) @ ab) / max(ab @ ab, 1e-9), 0, 1)
+        return np.hypot(*(P - (a + t[:, None] * ab)).T)
+    d = np.stack([seg_dist(C[i], C[(i + 1) % 4]) for i in range(4)], 1)
+    side = d.argmin(1)
+    lines = []
+    for i in range(4):
+        Q = P[(side == i) & (d[:, i] < 0.06 * max(h, w))]
+        if len(Q) < 20:
+            return corners
+        for _ in range(3):
+            m = Q.mean(0)
+            _, _, vt = np.linalg.svd(Q - m, full_matrices=False)
+            r = np.abs((Q - m) @ vt[1])
+            Q = Q[r <= np.percentile(r, 75) + 0.75]
+        lines.append((m, vt[0]))
+    out = []
+    for i in range(4):
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]
+        try:
+            t = np.linalg.solve(np.array([d1, -d2]).T, p2 - p1)
+        except np.linalg.LinAlgError:
+            return corners
+        q = p1 + t[0] * d1
+        if np.hypot(*(q - C[i])) > 0.12 * max(h, w):
+            return corners                                    # implausible: keep the rough corners
+        out.append((float(q[0]), float(q[1])))
+    return out
 
 
 def sheet_aspect(quad, size):
@@ -113,7 +162,10 @@ def flatten(rgb, quad, out_w, paper="auto"):
         out_h = int(round(out_w * PAPER[snapped][1] / PAPER[snapped][0]))
     else:
         out_h = int(round(out_w / aspect))
-    flatten.info = {"aspect_estimate": round(aspect, 4), "method": method, "snapped_to": snapped}
+    ranked = sorted(PAPER, key=lambda k: abs(PAPER[k][0] / PAPER[k][1] - aspect))
+    d0, d1 = (abs(PAPER[k][0] / PAPER[k][1] - aspect) for k in ranked[:2])
+    flatten.info = {"aspect_estimate": round(aspect, 4), "method": method, "snapped_to": snapped,
+                    "ambiguous_with": ranked[1] if paper == "auto" and d1 - d0 < 0.025 else None}
     dst = [(0, 0), (out_w, 0), (out_w, out_h), (0, out_h)]
     a = []
     b = []
@@ -126,7 +178,7 @@ def flatten(rgb, quad, out_w, paper="auto"):
     return np.asarray(im).astype(np.float32)
 
 
-def estimate_skew(gray):
+def estimate_skew(gray, limit=3.0):
     """Counter-clockwise rotation (degrees) that makes text rows sharpest, i.e. straightens the page."""
     small = Image.fromarray(gray.astype(np.uint8)).resize((gray.shape[1] // 2, gray.shape[0] // 2))
     ink = (255 - np.asarray(small, np.float32)) > 60
@@ -134,7 +186,7 @@ def estimate_skew(gray):
     def sharpness(angle):
         rows = np.asarray(img.rotate(angle, resample=Image.BILINEAR), np.float32).sum(1)
         return float(np.var(rows))
-    coarse = max(np.arange(-3, 3.001, 0.1), key=sharpness)
+    coarse = max(np.arange(-limit, limit + 0.001, 0.1), key=sharpness)
     fine = max(np.arange(coarse - 0.12, coarse + 0.121, 0.02), key=sharpness)
     return round(float(fine), 2)
 
@@ -344,9 +396,19 @@ def colour_regions(rgb, min_area):
     sat = (mx - mn) / np.maximum(mx, 1)
     mask = (sat > 0.28) & (mx > 40) & (mx - mn > 45)
     mask = ndi.binary_opening(mask, np.ones((2, 2), bool))
-    lab, n = ndi.label(mask)
+    lab = np.zeros(mask.shape, np.int32)                 # label each colour apart: touching bars of
+    if mask.any():                                       # different colours stay separate regions
+        group = np.zeros(mask.shape, np.int16)
+        group[mask] = chroma_clusters(rgb[mask], k=6) + 1
+        n = 0
+        for g in range(1, int(group.max()) + 1):
+            lg, k = ndi.label(group == g)
+            lab[lg > 0] = lg[lg > 0] + n
+            n += k
     out = []
     for i, sl in enumerate(ndi.find_objects(lab), 1):
+        if sl is None:
+            continue
         region = lab[sl] == i
         area = int(region.sum())
         if area < min_area:
@@ -485,7 +547,7 @@ def split_wide_gaps(lines):
     """Split OCR lines into rows (OCR sometimes strings a column of list numbers into one
     'line') and at very wide gaps (a label beside a drawing, cells of a table row), so each
     piece is measured on its own ink."""
-    out = []
+    out, src = [], {}
     for l in lines:
         rows = []
         for w in sorted(l["words"], key=lambda w: (w["box"][1] + w["box"][3]) / 2):
@@ -498,17 +560,30 @@ def split_wide_gaps(lines):
             else:
                 rows.append([w])
         for row in rows:
-            ws = sorted(row, key=lambda w: w["box"][0])
-            h = max(w["box"][3] - w["box"][1] for w in ws)
-            piece = [ws[0]]
-            for w in ws[1:]:
-                if w["box"][0] - piece[-1]["box"][2] > max(4 * h, 120):
-                    out.append(relayout(l, piece))
-                    piece = []
-                piece.append(w)
-            out.append(relayout(l, piece))
-    out.sort(key=lambda l: (l["box"][1], l["box"][0]))
-    return out
+            src[id(row)] = l
+        out += rows
+    # gutters: wide gaps that several rows share at the same x are column breaks, even when
+    # OCR read straight across them
+    gaps = []
+    for row in out:
+        ws = sorted(row, key=lambda w: w["box"][0])
+        h = max(w["box"][3] - w["box"][1] for w in ws)
+        gaps += [(a["box"][2] + b["box"][0]) / 2 for a, b in zip(ws, ws[1:]) if b["box"][0] - a["box"][2] > 1.3 * h]
+    gutters = [g for g in gaps if sum(abs(g - q) < 25 for q in gaps) >= 3]
+    final = []
+    for row in out:
+        ws = sorted(row, key=lambda w: w["box"][0])
+        h = max(w["box"][3] - w["box"][1] for w in ws)
+        piece = [ws[0]]
+        for w in ws[1:]:
+            gap, mid = w["box"][0] - piece[-1]["box"][2], (piece[-1]["box"][2] + w["box"][0]) / 2
+            if gap > max(4 * h, 120) or (gap > 1.3 * h and any(abs(mid - g) < 25 for g in gutters)):
+                final.append(relayout(src[id(row)], piece))
+                piece = []
+            piece.append(w)
+        final.append(relayout(src[id(row)], piece))
+    final.sort(key=lambda l: (l["box"][1], l["box"][0]))
+    return final
 
 
 def figure_candidates(ink, lines, rule_mask, pad=6):
@@ -573,11 +648,12 @@ def probe_page(scan: Path, out: Path, width: int = 0, no_deskew: bool = False, p
     elif width and abs(rgb.shape[1] - width) > 2:
         im = Image.fromarray(rgb.astype(np.uint8))
         rgb = np.asarray(im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)).astype(np.float32)
-    skew = 0.0 if no_deskew else estimate_skew(luminance(rgb))
+    rgb, paper = normalize_light(rgb)            # first, so shadows can't pass for rows of ink
+    # a flattened photo is already nearly upright; a flatbed scan may be a few degrees off
+    skew = 0.0 if no_deskew else estimate_skew(luminance(rgb), limit=1.0 if quad else 3.0)
     if skew:
         im = Image.fromarray(rgb.astype(np.uint8)).rotate(skew, resample=Image.BICUBIC, fillcolor=(255, 255, 255))
         rgb = np.asarray(im).astype(np.float32)
-    rgb, paper = normalize_light(rgb)
     deskewed = out / "deskewed.png"
     Image.fromarray(rgb.astype(np.uint8)).save(deskewed)
 
@@ -601,6 +677,7 @@ def probe_page(scan: Path, out: Path, width: int = 0, no_deskew: bool = False, p
     for line in lines:
         measure_line(text_ink, line)
     mark_bold(lines)
+    lines = reading_order(lines, w)                 # column by column, so copied text reads right
     data = {
         "source": str(scan),
         "image": deskewed.name,

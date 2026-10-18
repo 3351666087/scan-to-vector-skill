@@ -49,6 +49,44 @@ def colour(c):
     return tuple(c)
 
 
+def reading_order(lines, page_width=None):
+    """Order text lines as a reader would: top to bottom, and column by column where text is
+    set in columns (a recursive cut on the gaps between line boxes). Narrow cells, as in a
+    table, stay row by row."""
+    if not lines:
+        return lines
+    page_width = page_width or max(l["box"][2] for l in lines)
+    hs = sorted(l["box"][3] - l["box"][1] for l in lines)
+    gap_y, gap_x = 1.2 * hs[len(hs) // 2], 0.8 * hs[len(hs) // 2]
+
+    def groups(items, axis, gap):
+        items = sorted(items, key=lambda l: l["box"][axis])
+        out, cur, edge = [], [items[0]], items[0]["box"][axis + 2]
+        for l in items[1:]:
+            if l["box"][axis] - edge > gap:
+                out.append(cur)
+                cur = []
+            cur.append(l)
+            edge = max(edge, l["box"][axis + 2])
+        return out + [cur]
+
+    def wide(g):
+        ws = sorted(l["box"][2] - l["box"][0] for l in g)
+        return ws[len(ws) // 2] > 0.22 * page_width
+
+    def cut(items):
+        if len(items) <= 1:
+            return items
+        bands = groups(items, 1, gap_y)
+        if len(bands) > 1:
+            return [x for b in bands for x in cut(b)]
+        cols = groups(items, 0, gap_x)
+        if len(cols) > 1 and all(wide(c) for c in cols):
+            return [x for c in cols for x in cut(c)]
+        return sorted(items, key=lambda l: (l["baseline"], l["box"][0]))
+    return cut(list(lines))
+
+
 def load_probe(probe_path):
     """probe.json with the corrections in fixes.json (same folder) applied:
         {"words": {"12.2": "6 cm", "3.0": ""},          line.word -> new text ("" deletes it)
@@ -67,7 +105,17 @@ def load_probe(probe_path):
         line["words"] = [w for w in line["words"] if w["text"].strip()]
         line["text"] = " ".join(w["text"] for w in line["words"])
     data["lines"] = [l for l in data["lines"] if l["words"]]
-    data["_added"] = fixes.get("add", [])
+    added = []
+    for a in fixes.get("add", []):                     # text OCR missed, placed in reading order
+        size = a.get("size", 30)
+        x, base = a["x"], a["baseline"]
+        word = {"text": a["text"], "conf": 100.0, "natural": True, "box": [x, base - size * 0.75, x + size * 0.5 * len(a["text"]), base],
+                "bold": a.get("bold", False), "italic": a.get("italic", False), "color": a.get("color", "#000000")}
+        added.append({"text": a["text"], "box": [round(v) for v in word["box"]], "baseline": base, "size_px": size,
+                      "words": [word], "align": a.get("align", "left"), **({"font": a["font"]} if "font" in a else {})})
+    if added:
+        data["lines"] = reading_order(data["lines"] + added, data.get("size_px", [None])[0])
+    data["_added"] = []
     return data
 
 
@@ -168,7 +216,7 @@ class Canvas:
                 bold = wd.get("bold", line.get("bold", False)) or wd["text"] in bold_words
                 self.text(x0, base, wd["text"], size, font=line.get("font", font), bold=bold,
                           italic=wd.get("italic", line.get("italic", italic)), color=wd.get("color", color),
-                          width=x1 - x0)
+                          width=None if wd.get("natural") else x1 - x0, align=line.get("align", "left"))
 
     # ------------------------------------------------------------ vector shapes
     def _finish(self, shape, stroke, width, fill=None, dash=None, closed=False, cap=0, join=0):

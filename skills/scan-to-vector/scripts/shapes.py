@@ -233,10 +233,10 @@ def colour_groups(rgb, mask, palette):
         return group
     pal = np.array([[int(c[i:i + 2], 16) for i in (1, 3, 5)] for c in palette], np.float32)
     mx, mn = rgb.max(-1), rgb.min(-1)
-    coloured = mask & ((mx - mn) / np.maximum(mx, 1) > 0.25)
+    coloured = mask & ((mx - mn) / np.maximum(mx, 1) > 0.25) & (mx - mn > 50)   # dark JPEG noise is not colour
     px = rgb[coloured]
     d = np.linalg.norm(px[:, None, :] - pal[None], axis=-1)
-    near = d.min(1) < 110
+    near = d.min(1) < 90
     g = np.zeros(len(px), np.int16)
     g[near] = d[near].argmin(1) + 1
     group[coloured] = g
@@ -286,8 +286,9 @@ def find_shapes(rgb, drawn_ink, word_boxes, text_size, palette=(), ink_level=165
         h, w = y1 - y0, x1 - x0
         edt_max = float(edt_in(comp).max())
         solid = min(h, w) >= 4 and edt_max >= 0.3 * min(h, w) / 2 + 1
+        dot = solid and area >= 0.65 * h * w and 0.7 <= w / h <= 1.4          # a marker, bullet or dot
         sw = stroke_width(comp)
-        if max(h, w) < 1.5 * text_size and not solid and not attached[sl][comp].any():
+        if max(h, w) < 1.5 * text_size and not dot and not attached[sl][comp].any():
             left.append([x0, y0, x1, y1])                  # text-sized and on its own: maybe a letter OCR missed
             continue
         colour = colour_of(rgb[sl][comp])

@@ -36,7 +36,7 @@ sys.path.insert(0, str(HERE))
 from canvas import Canvas  # noqa: E402
 from canvas import load_probe  # noqa: E402
 from compare import compare_page  # noqa: E402
-from probe import luminance, probe_page  # noqa: E402
+from probe import PAPER, luminance, probe_page  # noqa: E402
 from shapes import find_shapes, find_washes, ink_mask  # noqa: E402
 
 BUILD_TEMPLATE = '''#!/usr/bin/env python3
@@ -124,7 +124,8 @@ def detect_fills(rgb, probe):
         for w in l["words"]:
             x0, y0, x1, y1 = w["box"]
             words[y0:y1, x0:x1] = True
-    dark = ndi.binary_opening(lum < 150, np.ones((7, 7), bool)) & ~words
+    neutral = sat < 0.25                                  # coloured bars come from colour regions, one per colour
+    dark = ndi.binary_opening((lum < 150) & neutral, np.ones((7, 7), bool)) & ~words
     lab, n = ndi.label(dark)
     for i, sl in enumerate(ndi.find_objects(lab), 1):
         comp = lab[sl] == i
@@ -195,23 +196,49 @@ def trace_series(rgb, probe):
     return out
 
 
+def unblurred_width(depth, blur=2.0):
+    """Line width from its cross-section: full width at half depth (sub-pixel), less the
+    spread a scan adds (blur ~ the half-depth width of a hairline at 200 dpi)."""
+    half = depth.max() / 2
+    above = np.flatnonzero(depth >= half)
+    i, j = above[0], above[-1]
+    left = i - (depth[i] - half) / max(depth[i] - depth[i - 1], 1e-6) if i > 0 else float(i)
+    right = j + (depth[j] - half) / max(depth[j] - depth[j + 1], 1e-6) if j + 1 < len(depth) else float(j)
+    fwhm = right - left
+    return float(np.sqrt(max(fwhm ** 2 - blur ** 2, 1.0)))
+
+
 def rule_colours(rgb, rules):
+    """Width and colour of each rule from its cross-section: the width at half depth, and the
+    shade that puts the same total ink on the page as the scan (a blurred pale grid line is
+    drawn thin and pale, not thick and dark)."""
     out = []
+    H, W = rgb.shape[:2]
     for r in rules:
         if r["width"] > 10:                      # a bar or block, drawn as a fill instead
             continue
-        if r["dir"] == "h":
-            y0 = int(r["y"] - r["width"] / 2)
-            px = rgb[max(y0, 0):y0 + r["width"] + 1, r["x0"]:r["x1"]].reshape(-1, 3)
-        else:
-            x0 = int(r["x"] - r["width"] / 2)
-            px = rgb[r["y0"]:r["y1"], max(x0, 0):x0 + r["width"] + 1].reshape(-1, 3)
-        lum = luminance(px) if len(px) else np.array([])
-        dark = px[lum <= np.percentile(lum, 35)] if len(px) else px       # the rule's core, not the paper
-        col = np.median(dark, 0) if len(dark) else np.array([0, 0, 0])
+        c = r["y"] if r["dir"] == "h" else r["x"]
+        a, b = (r["x0"], r["x1"]) if r["dir"] == "h" else (r["y0"], r["y1"])
+        lo, hi = int(round(c)) - 7, int(round(c)) + 8
+        if lo < 0 or hi > (H if r["dir"] == "h" else W) or b - a < 4:
+            out.append({**r, "color": "#000000"})
+            continue
+        band = rgb[lo:hi, a:b] if r["dir"] == "h" else rgb[a:b, lo:hi].transpose(1, 0, 2)
+        prof = np.median(band, axis=1)                       # (15, 3): the line's cross-section
+        lum = luminance(prof)
+        paper = max(lum[0], lum[-1], 200.0)
+        depth = np.clip(paper - lum, 0, None)
+        if depth.max() < 8:
+            out.append({**r, "color": "#000000"})
+            continue
+        width = max(1.0, unblurred_width(depth))
+        target = 255 - min(255.0, depth.sum() / width * 255 / paper)
+        core = prof[int(np.argmin(lum))]
+        core_lum = float(luminance(core[None])[0])
+        col = 255 - (255 - core) * ((255 - target) / max(255 - core_lum, 1))
         if luminance(col[None])[0] < 70:
             col = np.array([0, 0, 0])
-        out.append({**r, "color": hexcol(col)})
+        out.append({**r, "width": round(width, 1), "color": hexcol(col)})
     return out
 
 
@@ -257,12 +284,38 @@ def text_colours(rgb, probe):
             if len(px) < 15:
                 continue
             c = np.median(px, 0)
-            if (c.max() - c.min()) / max(c.max(), 1) > 0.3:
-                w["color"] = hexcol(c)
+            if (c.max() - c.min()) / max(c.max(), 1) > 0.35 and c.max() - c.min() > 60:   # clearly coloured,
+                w["color"] = hexcol(c)                                                     # not a paper tint
+
+
+def square_check(probe):
+    """Checkboxes are square and option bubbles round. On a flattened photo, their measured
+    width/height tells whether the page came out stretched; returns the paper size that
+    makes them square again, or None."""
+    info = probe.get("photo_aspect") or {}
+    if not info:
+        return None
+    ratios = [(b["box"][2] - b["box"][0]) / max(b["box"][3] - b["box"][1], 1) for b in probe.get("checkboxes", [])]
+    if len(ratios) < 3:
+        return None
+    r = float(np.median(ratios))
+    if abs(r - 1) < 0.03:
+        return None
+    w, h = probe["size_px"]
+    true_aspect = (w / h) / r
+    name = min(PAPER, key=lambda k: abs(PAPER[k][0] / PAPER[k][1] - true_aspect))
+    if abs(PAPER[name][0] / PAPER[name][1] - true_aspect) / true_aspect < 0.03 and name != info.get("snapped_to"):
+        return name
+    return None
 
 
 def draft_page(scan: Path, page_dir: Path, n: int, work: Path, pdf: Path, paper: str = "auto"):
     probe = probe_page(scan, page_dir, paper=paper)
+    fix = square_check(probe) if paper == "auto" else None
+    if fix:                                       # its checkboxes say the photo's proportions were off
+        probe = probe_page(scan, page_dir, paper=fix)
+        probe["photo_aspect"]["corrected_by"] = "checkboxes"
+        (page_dir / "probe.json").write_text(json.dumps(probe, indent=1))
     rgb = np.asarray(Image.open(page_dir / probe["image"]).convert("RGB")).astype(np.float32)
     text_colours(rgb, probe)
     (page_dir / "probe.json").write_text(json.dumps(probe, indent=1))
@@ -347,6 +400,11 @@ def rebuild(work: Path, pdf: Path, pass_f1: float):
             joined.insert_pdf(src)
         all_pass &= cmp["verdict"] == "PASS"
         items, sheet = proof_sheet(page_dir, probe, cmp)
+        pa = probe.get("photo_aspect") or {}
+        if pa.get("ambiguous_with") and not pa.get("corrected_by"):
+            cmp.setdefault("checks", []).append(
+                f"photo proportions are ambiguous: drafted as {pa.get('snapped_to')}, but {pa['ambiguous_with']} fits almost as well. "
+                f"Check a shape of known proportions (a square box, a circle, the margins); if needed rerun with --paper {pa['ambiguous_with']}")
         report += [f"## {page_dir.name}: {cmp['verdict']}  (ink F1 {cmp['ink_f1']}, font {draft['font']})",
                    f"- diff: {page_dir / 'compare' / 'diff.png'}  (red = not drawn yet, blue = drawn where the scan is blank)"]
         for p in cmp["problems"]:
@@ -380,18 +438,24 @@ def main() -> int:
     ap.add_argument("--pdf", type=Path, default=Path("out/rebuilt.pdf"))
     ap.add_argument("--rebuild", type=Path, help="rerun build.py in every page folder of this work dir")
     ap.add_argument("--pass-f1", type=float, default=0.92)
-    ap.add_argument("--paper", default="auto",
-                    help="photographed pages: auto (snap to the nearest standard size), none, or letter/a4/legal/a5")
+    ap.add_argument("--paper", action="append", default=[],
+                    help="photographed pages: auto (snap to the nearest standard size), none, or letter/a4/legal/a5; "
+                         "N=SIZE for page N only (repeatable), e.g. --paper 3=letter")
     args = ap.parse_args()
     if args.rebuild:
         return 0 if rebuild(args.rebuild.resolve(), args.pdf.resolve(), args.pass_f1) else 1
     if not args.scans:
         ap.error("give scan images, or --rebuild WORKDIR")
     work = args.out.resolve()
+    default = next((v for v in args.paper if "=" not in v), "auto")
+    per_page = {int(k): v for k, v in (x.split("=", 1) for x in args.paper if "=" in x)}
+    only = set(per_page) if per_page and all("=" in x for x in args.paper) and (work / "p01").exists() else None
     for n, scan in enumerate(args.scans, 1):
+        if only is not None and n not in only:
+            continue                              # redraft just the pages named, keep the rest
         page_dir = work / f"p{n:02d}"
         print(f"drafting {scan} -> {page_dir}", file=sys.stderr)
-        draft_page(scan.resolve(), page_dir, n, work, args.pdf.resolve(), args.paper)
+        draft_page(scan.resolve(), page_dir, n, work, args.pdf.resolve(), per_page.get(n, default))
     return 0 if rebuild(work, args.pdf.resolve(), args.pass_f1) else 1
 
 

@@ -21,7 +21,10 @@ Check all four before you report success.
 `S` is this skill's folder. `PY` is a Python with PyMuPDF, Pillow, numpy and scipy, plus the `tesseract` command.
 
 1. **Draft every page at once:** `PY S/scripts/draft.py page1.jpg [page2.jpg ...] --out work --pdf out/rebuilt.pdf`.
-   It writes `work/pNN/` per page and `work/report.md`. Photos are snapped to the nearest standard paper size; for books, receipts and other odd sizes add `--paper none` (or force one: `--paper a4`).
+   It writes `work/pNN/` per page and `work/report.md`, with text in reading order (column by column).
+   - **Photos** are flattened and snapped to the nearest standard paper size (square checkboxes correct it when present).
+   - If the report says a page's **proportions are ambiguous**, check a shape of known proportions before proofreading. If needed, redraft just that page: `--paper 3=letter`.
+   - For books, receipts and other odd sizes add `--paper none`.
 2. **Proofread each page from its sheet.** Open `work/pNN/compare/words.png`. Each crop from the scan has an id and the current reading under it.
    - **A wrong reading:** put the right text in `work/pNN/fixes.json` under its id. Use `""` to delete a reading that is not text.
    - **"?" (ink not drawn yet):** if it is text, add it with the position from the report's box (x = left edge, baseline = bottom of letters without descenders). Use the size of the neighbouring line in `probe.json` (`size_px`).
