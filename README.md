@@ -18,6 +18,7 @@
   <img alt="Works with Claude Code" src="https://img.shields.io/badge/Claude%20Code-ready-d97757?style=flat-square">
   <img alt="Works with Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square">
+  <a href="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
 </p>
 
@@ -244,6 +245,8 @@ The tests generate synthetic pages and PDFs on the fly and need no real books. T
 - The benchmark is synthetic: printed English pages with a known ground truth. Handwriting, dense engravings and other scripts are harder, and Tesseract reads only English unless you add language packs.
 - Retained photographs or engravings make the result a mixed-content PDF, and the delivery note says so.
 - Deleting sources or publishing results happens only when you ask. The skill grants no such permission by itself.
+
+If scan-to-vector saved you an afternoon, a ⭐ on the repository helps other people find it.
 
 ## Credits
 

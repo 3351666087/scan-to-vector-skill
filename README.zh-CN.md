@@ -18,6 +18,7 @@
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-ready-d97757?style=flat-square">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square">
+  <a href="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
 </p>
 
@@ -244,6 +245,8 @@ README 里的动画也由这些文件生成。动画中的重建页把文字转�
 - 评测集是合成的：印刷体英文页面，真值已知。手写、密集的雕版画和其他文字更难；Tesseract 默认只认英文，其他语言需要另装语言包。
 - 保留了照片或雕版插画的结果属于混合内容 PDF，交付说明会写明。
 - 删除原稿、对外发布只在你明确要求时进行，技能本身不授予这些权限。
+
+如果它帮你省下了时间，给仓库点个 ⭐，能让更多人找到它。
 
 ## 致谢与来源
 
