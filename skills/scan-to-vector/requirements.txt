@@ -1,2 +1,4 @@
 PyMuPDF>=1.28.2,<2
-Pillow>=12.3.0,<13
+Pillow>=12.3.0
+numpy>=1.26
+scipy>=1.11

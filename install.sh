@@ -143,9 +143,12 @@ install_to() {  # install_to SKILLS_DIR LABEL
 [ $want_codex = 1 ]  && install_to "$codex_root/skills" "Codex"
 [ -n "$extra_dir" ]  && install_to "$extra_dir" "$extra_dir"
 
-if [ -n "$installed" ] && ! python3 -c 'import pymupdf, PIL' >/dev/null 2>&1; then
-  say "The bundled PDF helper needs Python 3.10+ with PyMuPDF and Pillow:"
+if [ -n "$installed" ] && ! python3 -c 'import pymupdf, PIL, numpy, scipy' >/dev/null 2>&1; then
+  say "The skill's scripts need Python 3.10+ with PyMuPDF, Pillow, numpy and scipy:"
   say "  python3 -m pip install -r \"$installed/requirements.txt\""
+fi
+if [ -n "$installed" ] && ! command -v tesseract >/dev/null 2>&1; then
+  say "They also need Tesseract OCR: brew install tesseract  (or: sudo apt install tesseract-ocr)"
 fi
 [ $failed = 0 ] && say "Start a new agent session to load the skill."
 exit $failed

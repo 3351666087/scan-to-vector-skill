@@ -1,7 +1,7 @@
 {
   "name": "scan-to-vector",
   "displayName": "Scan to Vector",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Rebuild scanned books, manuals, worksheets and charts as searchable, newly typeset PDFs with vector diagrams, checked page by page against the scan.",
   "author": {
     "name": "Null3351",

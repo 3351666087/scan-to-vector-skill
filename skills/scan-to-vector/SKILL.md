@@ -1,69 +1,55 @@
 ---
 name: scan-to-vector
-description: Reconstruct scanned books, manuals, forms, and worksheets as searchable, newly typeset PDFs with vector diagrams. Use when the user wants scans redrawn or retypeset, or asks to resume a partial scan reconstruction. Includes OCR reconciliation, page provenance, diagram reconstruction, pagination, cross-references, and visual QA. For adding a hidden OCR layer without changing the page design, use a simpler OCR workflow.
+description: Rebuild scanned or photographed pages (worksheets, forms, tables, charts, flowcharts, manuals, book pages, multi-page packets) as clean, newly typeset PDFs with real searchable text, vector diagrams and charts, the original layout, and nothing invented. Use whenever someone wants a scan or phone photo of a document turned into a clean, editable, searchable or vector PDF, redrawn or retypeset, or a printed chart turned back into data. One command drafts every page; you proofread from one image per page and fix by id. For only adding a hidden OCR layer to an unchanged scan, use an OCR tool instead.
 ---
 
 # Scan to vector
 
-Rebuild the supplied document while preserving its content and functional meaning. Use the source image as the authority for reading order, labels, blanks, and diagram geometry. Deliver searchable body text and vector artwork where appropriate; describe any retained raster images accurately.
+## Done means
+Check all four before you report success.
+1. **Real text.** Every word on the page is selectable text. No word is invented.
+2. **Vector graphics.** Rules, tables, boxes, diagrams and charts are paths. No full-page image and no hidden OCR layer. Keep a raster crop only for photographs or engravings, and name it in your note.
+3. **Same layout.** Same elements in the same places, on upright, flat pages with the original's proportions.
+4. **Verified.** The report says PASS for every page and you have proofread every page, or your note lists what remains.
 
-## 1. Establish the job and checkpoint
+## Why it works this way
+- **The draft does the mechanical 95%.** One command flattens photos, straightens pages, evens the light and reads the text twice. It places every word at its measured spot, size and weight. It draws rules, shading and fills, and traces every remaining line, arrow, outline and chart series into vector shapes. Your job is what scripts can't judge: reading the words OCR doubted, and checking.
+- **You see a shrunken page.** Small print read off a whole page is guesswork. The draft crops every doubtful word, enlarges it and puts them all on one sheet per page, so one look checks them all.
+- **Looking right is not being right.** Every rebuild is compared with the scan. The report lists exactly what is missing or misplaced.
 
-- Inspect the user's sources, project instructions, existing content, renderer, and latest handoff. Resume verified work in place. Infer scope from the request; ask only for missing decisions that materially change the result, such as facsimile versus redesigned layout.
-- Inventory every input PDF and its physical pages. Read [the provenance and content guide](references/content-and-provenance.md) before creating or changing the page ledger. Keep source page index, printed page label, and output page number separate.
-- Choose a renderer already working in the project when practical. Verify representative difficult content present in the source through the actual final renderer before committing to a full layout; include diagrams and page boundaries when applicable.
-- Create a checkpoint containing scope, source identities, page ledger, build command, current file ownership, unresolved questions, and the next small batch. Use project-relative paths in portable records.
+## Method
+`S` is this skill's folder. `PY` is a Python with PyMuPDF, Pillow, numpy and scipy, plus the `tesseract` command.
 
-**Done when:** every supplied physical page is accounted for, the desired output is clear, and the next batch can be resumed without the conversation history.
+1. **Draft every page at once:** `PY S/scripts/draft.py page1.jpg [page2.jpg ...] --out work --pdf out/rebuilt.pdf`.
+   It writes `work/pNN/` per page and `work/report.md`, with text in reading order (column by column).
+   - **Photos** are flattened and snapped to the nearest standard paper size (square checkboxes correct it when present).
+   - If the report says a page's **proportions are ambiguous**, check a shape of known proportions before proofreading. If needed, redraft just that page: `--paper 3=letter`.
+   - For books, receipts and other odd sizes add `--paper none`.
+2. **Proofread each page from its sheet.** Open `work/pNN/compare/words.png`. Each crop from the scan has an id and the current reading under it.
+   - **A wrong reading:** put the right text in `work/pNN/fixes.json` under its id. Use `""` to delete a reading that is not text.
+   - **"?" (ink not drawn yet):** if it is text, add it with the position from the report's box (x = left edge, baseline = bottom of letters without descenders). Use the size of the neighbouring line in `probe.json` (`size_px`).
+   ```json
+   {"words": {"13.0": "(B)", "19.0": "8 cm", "4.2": ""},
+    "add": [{"text": "h", "x": 561, "baseline": 1122, "size": 30, "italic": true}]}
+   ```
+   - Never guess text you cannot read. Keep the reading and list it as uncertain.
+3. **Check the rest on the diff.** Open `work/pNN/compare/diff.png`. Red is on the scan but not drawn; blue is drawn where the scan is blank. For anything red or blue that is not text, zoom in: `PY S/scripts/zoom.py work/pNN/deskewed.png X0 Y0 X1 Y1 --grid 50 --out work/zoom.png`. Then:
+   - **Traced shapes, fills and rules** are in `draft.json` ("shapes", "fills", "rules"). Delete strays such as specks and shadows there. A traced outline may be replaced by a clean `c.line`/`c.ellipse`/`c.polyline` if you want it more editable.
+   - **Anything still missing:** add drawing calls in the marked section of `build.py`, using coordinates from a gridded zoom.
+4. **Rebuild:** `PY S/scripts/draft.py --rebuild work --pdf out/rebuilt.pdf`.
+   - **When to stop:** every page is PASS and every sheet is proofread. Don't polish beyond that. If a page isn't PASS after three rounds, stop and note what remains.
+   - "check" lines in the report are advisory.
+5. **Deliver** the PDF and a 3–6 line note: pages, what is text and vector, any raster crops, uncertain words.
 
-## 2. Reconcile OCR with the scan
-
-- Extract any existing text layer and obtain independent OCR when extraction is absent or unreliable. Save OCR text and word/line coordinates alongside a readable source rendering; retain higher-resolution originals for crops and close inspection.
-- Inspect low-text pages visually. Covers, diagrams, forms, and pale artwork can look blank to OCR. Record genuinely blank and duplicate pages explicitly.
-- Read columns, footnotes, captions, tables, and callouts in visual order. Correct recognition errors against the image. Preserve intentional errors, answer blanks, question numbers, phonetics, and strikeouts in educational material.
-- Save corrected content in small batches, usually 1–3 source pages. Each batch updates the ledger and records unresolved readings. If the source is unclear, mark the uncertainty for review rather than inventing content.
-- For parallel work, assign disjoint source ranges and owned files. Keep shared styles, renderer changes, and release builds under one owner.
-
-**Done when:** each in-scope page has source-linked content or an explicit reviewed disposition, with uncertainty resolved or disclosed.
-
-## 3. Reconstruct figures and layout
-
-- Use editable text and table structures for body copy and tabular content. Redraw charts, line art, maps, grids, and forms as vector objects when their structure can be recovered. Retain photographic or complex illustrative regions as clean raster crops where appropriate.
-- When a page contains diagrams, charts, forms, or crops, read [the figure reconstruction guide](references/figures.md). Verify data, topology, labels, arrows, and answer spaces against the source before polishing appearance.
-- Keep content, styling, and figure data separate enough to revise one without retranscribing the others. Preserve nearby relationships: prompt with answer space, diagram with its legend, caption with its image.
-- Render a small batch after each structural change. Check dense tables, long passages, headings near page breaks, and large kept blocks at readable resolution.
-
-**Done when:** the batch is legible, content-complete, and its figure semantics match the source in the production renderer.
-
-## 4. Stabilize pagination and navigation
-
-Read [the rendering and release guide](references/render-and-release.md) before implementing page references or the first full build. It covers semantic anchors, renderer boundary errors, staged output, and final checks.
-
-- Generate page mappings from the final renderer's layout or PDF destinations. Link to the actual chart, exercise, or section when a source page spans multiple output pages.
-- Keep headings with their content and size keep-together blocks narrowly. Recheck any pagination affected by anchor or CSS changes.
-- Build to a temporary output. Check process success and PDF readability before replacing a previously verified result. Publish the matching page map and related PDFs together.
-
-**Done when:** all references resolve to the intended visible objects, and the verified PDF and page map describe the same build.
-
-## 5. Verify and deliver
-
-- Review every final page using contact sheets, then inspect small, dense, suspicious, or changed pages at readable resolution against the source. Contact sheets establish coverage; they do not verify individual words or diagram values.
-- Check source coverage, text extraction, font support/embedding, clipped text, missing assets, unresolved markup, and link targets. Use the bundled helper for mechanical evidence; its limits are described below.
-- Resolve findings and rerender affected pages. Rebuild the whole document when pagination or cross-document targets changed. Record remaining uncertainties and missing source material honestly.
-- Deliver the PDF(s), a concise coverage/limitations note, and editable source when requested. Retain the reproducible working project. Source deletion, remote upload, and publication follow the user's actual authorization; the workflow itself grants none.
-
-**Done when:** every source disposition and output page has review evidence, final artifacts open successfully, navigation is correct, and unresolved limitations are stated.
-
-## Bundled mechanical helper
-
-`scripts/pdf_tool.py` uses PyMuPDF and Pillow, listed in `requirements.txt`. Install them in a project environment if needed; use that interpreter for the commands below. Resolve `<skill-dir>` to this skill's location.
-
-```sh
-python <skill-dir>/scripts/pdf_tool.py inspect source.pdf --out work/source-inspection.json
-python <skill-dir>/scripts/pdf_tool.py contacts rebuilt.pdf --out work/contact-sheets
-python <skill-dir>/scripts/pdf_tool.py audit rebuilt.pdf --out work/pdf-audit.json --links-root output
+## Drawing calls (in build.py; coordinates are pixels of that page's deskewed.png)
+```python
+c.text(x, baseline, "Label", size=28, font=d["font"], bold=False, italic=False, align="center")
+c.line(p0, p1, width=2, dash=(8, 4))      c.polyline([(x, y), ...], width=3, color="#1f5fa8", closed=False)
+c.rect((x0, y0, x1, y1), width=2, fill=None)   c.circle((cx, cy), r, width=2)   c.ellipse((x0, y0, x1, y1))
+c.arrow(p0, p1, width=2, head=12)         c.checkbox((x0, y0, x1, y1), checked=True)
+c.arc((cx, cy), r, 0, 90, sector=True, fill="#f45f3f")
 ```
+Sample colours from `deskewed.png` instead of guessing. `c.add_font(name, path)` registers a TTF for glyphs the built-in fonts lack. Keep measured sizes and widths; "tidy" round values drift from the original.
 
-Inspect `--help` for optional sizing controls. An audit can detect structural problems, not OCR accuracy, reading order, missing source content, chart correctness, or visual quality. Vector-drawing counts and image counts are evidence about PDF objects, not a guarantee that the document is fully vector or searchable. Pair the report with the ledger and human-readable visual review notes.
-
-Reports are JSON, saved to `--out` and printed to stdout; `contacts` writes PNGs and `contacts.json` inside its output directory. Exit code `0` permits warnings, `1` means an audit found structural issues, and `2` means the command could not complete. Review warnings and unchecked links even when the exit code is zero. External PDF checking stays within `--links-root`; unsupported platforms or oversized targets are reported as unchecked.
+## Larger jobs
+For books, multi-file sets and resumable projects, read `references/long-documents.md` (page ledger, checkpoints, parallel work). Charts as data, and figures the tracer can't handle (photos, engravings): `references/figures.md`. Pagination, links and release: `references/render-and-release.md`. `scripts/pdf_tool.py` audits fonts, images and links in the finished PDFs. Single-page tools remain available: `probe.py`, `canvas.py`, `compare.py`.
