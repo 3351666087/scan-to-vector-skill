@@ -1,0 +1,11 @@
+{
+ "metric": "mean score of the draft alone (no agent), 18 unseen hard pages (holdout3)",
+ "v4": 0.917,
+ "v5": 0.969,
+ "v6": 0.989,
+ "other_sets_v6": {
+  "holdout2": 0.992,
+  "devhard": 0.991,
+  "dev": 0.994
+ }
+}

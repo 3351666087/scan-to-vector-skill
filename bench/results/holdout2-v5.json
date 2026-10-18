@@ -1,0 +1,160 @@
+{
+ "models": [
+  {
+   "name": "Haiku 5.5",
+   "pages": 18,
+   "score": [
+    0.894,
+    0.993
+   ],
+   "ci95": [
+    0.05,
+    0.16
+   ],
+   "wins": [
+    16,
+    0
+   ],
+   "worst": [
+    0.634,
+    0.952
+   ],
+   "minutes": [
+    4.1,
+    6.2
+   ],
+   "minutes_median": [
+    3.4,
+    5.9
+   ],
+   "faster": 2,
+   "packets": 6,
+   "ktokens": [
+    133,
+    180
+   ],
+   "tools": [
+    18,
+    44
+   ]
+  },
+  {
+   "name": "Sonnet 5.5",
+   "pages": 18,
+   "score": [
+    0.994,
+    0.996
+   ],
+   "ci95": [
+    -0.003,
+    0.007
+   ],
+   "wins": [
+    4,
+    2
+   ],
+   "worst": [
+    0.953,
+    0.972
+   ],
+   "minutes": [
+    14.4,
+    13.4
+   ],
+   "minutes_median": [
+    12.9,
+    9.2
+   ],
+   "faster": 4,
+   "packets": 6,
+   "ktokens": [
+    215,
+    235
+   ],
+   "tools": [
+    60,
+    81
+   ]
+  },
+  {
+   "name": "Opus 5.5",
+   "pages": 18,
+   "score": [
+    0.994,
+    0.994
+   ],
+   "ci95": [
+    -0.005,
+    0.006
+   ],
+   "wins": [
+    7,
+    3
+   ],
+   "worst": [
+    0.985,
+    0.951
+   ],
+   "minutes": [
+    7.9,
+    8.3
+   ],
+   "minutes_median": [
+    8.2,
+    7.2
+   ],
+   "faster": 3,
+   "packets": 6,
+   "ktokens": [
+    155,
+    188
+   ],
+   "tools": [
+    41,
+    68
+   ]
+  },
+  {
+   "name": "Fable 5.1",
+   "pages": 18,
+   "score": [
+    0.904,
+    0.992
+   ],
+   "ci95": [
+    0.05,
+    0.133
+   ],
+   "wins": [
+    18,
+    0
+   ],
+   "worst": [
+    0.711,
+    0.951
+   ],
+   "minutes": [
+    7.6,
+    10.4
+   ],
+   "minutes_median": [
+    9.1,
+    11.0
+   ],
+   "faster": 1,
+   "packets": 6,
+   "ktokens": [
+    124,
+    187
+   ],
+   "tools": [
+    29,
+    61
+   ]
+  }
+ ],
+ "pages": 18,
+ "note": "18 unseen pages \u00b7 6 three-page packets \u00b7 skill v5",
+ "skill": "v5",
+ "set": "holdout2 (seeds 9100-9117, hard mode)"
+}

@@ -25,6 +25,8 @@
 
 OCR 交给你的是“扫描图 + 一层看不见的文字”。**scan-to-vector 交给你的是重建后的页面**：文字是真文字，能搜索、能复制；图示和图表重绘为矢量路径，怎么放大都清晰；照片和雕版插画保留为干净的裁图，并在交付说明里注明。每一页原稿都登记在台账里，交付前还要把重建结果叠在原稿上逐页核对。
 
+> **用数据说话：** 在 18 页从未见过的困难测试页上，用了本技能的 Haiku 5.5 得分 0.993，与不用技能的 Opus 5.5（0.994）持平；Haiku 自己做只有 0.894。[查看评测](#用了它agent-真的更强吗)
+
 ## 演示
 
 两个演示用的都是真实的公有领域扫描件。仓库里的重建 PDF 由 agent 按照 [`SKILL.md`](skills/scan-to-vector/SKILL.md) 完成，所有测量坐标都记录在构建脚本里，你可以自己重新生成。
@@ -48,6 +50,44 @@ OCR 交给你的是“扫描图 + 一层看不见的文字”。**scan-to-vector
 </p>
 
 agent 先标定雕版网格，再追踪两条曲线，把**每条曲线 81 个年度数值**还原到 [`data.csv`](demo/playfair-1786/rebuilt/data.csv)。[重绘的图表](demo/playfair-1786/rebuilt/playfair-1786.pdf)只用这份数据画成，曲线落回雕版原位，并且和原图一样在 1754 年交叉。PDF 里没有任何光栅图片。
+
+## 用了它，agent 真的更强吗？
+
+我们做了对照实验。同一个简短需求（“把这几页扫描件重建成一份干净的 PDF……”），每个模型各跑两次：一次不用技能，一次用本技能。测试页是 18 份技能从未调过参的合成文档（练习册、表格、图表、流程图、表单、双栏文章），全部是困难模式：陌生字体、内容密集，一半是手机斜拍的照片，带阴影、能拍到桌面。它们分成 6 组、每组 3 页，一共 48 次 agent 运行，每页按真值对文字、版式、图形和矢量比例打分（1.0 为满分）。
+
+<p align="center">
+  <img src="assets/benchmark.svg" width="100%" alt="哑铃图。页面质量（不用 → 用技能）：Haiku 5.5 0.894 → 0.993，Sonnet 5.5 0.994 → 0.996，Opus 5.5 0.994 → 0.994，Fable 5.1 0.904 → 0.992。每 3 页耗时（分钟）：Haiku 4.1 → 6.2，Sonnet 14.4 → 13.4，Opus 7.9 → 8.3，Fable 7.6 → 10.4。">
+</p>
+
+| 模型 | 得分（不用 → 用） | 提升的 95% 置信区间 | 逐页胜负 | 最差页 | 每 3 页耗时（分钟） | 每 3 页 token |
+| --- | --- | --- | --- | --- | --- | --- |
+| Haiku 5.5 | 0.894 → **0.993** | +0.050 至 +0.160 | 16–0 | 0.634 → 0.952 | 4.1 → 6.2 | 133k → 180k |
+| Fable 5.1 | 0.904 → **0.992** | +0.050 至 +0.133 | 18–0 | 0.711 → 0.951 | 7.6 → 10.4 | 124k → 187k |
+| Sonnet 5.5 | 0.994 → 0.996 | −0.003 至 +0.007 | 4–2 | 0.953 → 0.972 | 14.4 → 13.4 | 215k → 235k |
+| Opus 5.5 | 0.994 → 0.994 | −0.005 至 +0.006 | 7–3 | 0.985 → 0.951 | 7.9 → 8.3 | 155k → 188k |
+
+- **便宜的模型追上来了。** 用了技能的 Haiku，得分与不用技能的 Opus 持平，最差页从 0.63 升到 0.95。Fable 18 页全部变好。
+- **多花的时间都用在了核对上。** 不用技能时，Haiku 和 Fable 结束得早，是因为省掉了功夫：页面比例被拉伸、表格错位、图形缺线。技能要求它们先校对、再对照原稿，确认过才收工。
+- **最强的模型在 3 页任务上本来就接近满分。** 对它们来说质量变化不大，Sonnet 的耗时中位数从 12.9 分钟降到 9.2 分钟。它们用技能后最大的几处失分来自草稿脚本的 bug，v6 已修复（见下文）。
+
+### 为什么有效
+
+agent 做这类任务时的失败方式是可预测的，技能的每个部分各对付一种。
+
+- **它们看到的是缩小的页面。** 视觉模型读的是缩小后的图，位置、字号和小数字都靠猜。草稿脚本按扫描像素实测一切；拿不准的词裁出来放大，每页汇总到一张校对图上。
+- **它们发现不了自己漏了什么。** 每次重建都会叠在原稿上比对，报告逐页给出 PASS 或 FIX，并列出还缺什么、哪里放错了。
+- **它们会走最短的路。** 那就让正确的路最短：一条命令起草所有页面，改正一个读错的词只需在 `fixes.json` 里写一行。
+
+### 迭代过程
+
+每个版本都在没调过参的页面上测量，失败案例决定下一版改什么。
+
+- v1（只有说明文字）让 Sonnet 变快了，但没有变好。
+- v3 加入一条命令起草全部页面。Haiku 和 Fable 大幅提升，但一个照片比例 bug 让 Sonnet 丢了两页，v4 修复。
+- v5 把所有线条、箭头和图表曲线描成矢量，并加入校对图，得到上面的结果。
+- v6 修复了那 48 次运行暴露的问题：阴影遮住的照片角点、暗照片上的倾斜校正 bug、分栏阅读顺序、网格线粗细，以及用方形复选框判断纸张尺寸。在 18 页全新测试页上，不经 agent、只看草稿的得分为 0.917（v4）、0.969（v5）、0.989（v6）。
+
+原始数据见 [`bench/results/`](bench/results)，评测代码见 [`bench/`](bench)。
 
 ## 适合你吗？
 
@@ -75,13 +115,12 @@ git clone https://github.com/3351666087/scan-to-vector-skill.git
 | Codex | `mkdir -p ~/.codex/skills && cp -R scan-to-vector-skill/skills/scan-to-vector ~/.codex/skills/` |
 | 其他 | 把 `skills/scan-to-vector/` 复制到客户端加载 Agent Skills 的目录 |
 
-附带的 PDF 辅助脚本需要 Python 3.10+，以及 PyMuPDF 和 Pillow：
+脚本需要 Python 3.10+，以及 PyMuPDF、Pillow、numpy、scipy，OCR 还需要 `tesseract` 命令：
 
 ```bash
 python3 -m pip install -r scan-to-vector-skill/skills/scan-to-vector/requirements.txt
+brew install tesseract        # 或：sudo apt install tesseract-ocr
 ```
-
-技能不捆绑 OCR 和排版引擎。agent 会优先使用项目里已有的工具（Tesseract、LaTeX、HTML 转 PDF 渲染器、PyMuPDF 等），没有的话再按任务选择。
 
 ## 使用
 
@@ -104,25 +143,25 @@ python3 -m pip install -r scan-to-vector-skill/skills/scan-to-vector/requirement
 
 ## 工作流程
 
-1. **明确任务**：清点每一页输入，把扫描页序号、印刷页码和输出页码分开记录，并写好 checkpoint，脱离聊天记录也能接着做。
-2. **对照原稿校正 OCR**：OCR 只是草稿。阅读顺序、数字、脚注、答题空白都要对照图像校正；拿不准的地方记录下来，不凭空补全。
-3. **重建图示与版式**：表格转成文字，图示和图表依据还原出的几何或数据重绘为矢量，照片保留为裁图。
-4. **稳定分页与链接**：页码引用以最终渲染结果为准；构建先输出到暂存位置，失败的构建不会覆盖已验证的成果。
-5. **核验与交付**：联系表、逐页细查加结构审计，最后附交付说明，写清哪些是矢量、哪些仍是光栅、还有哪些未解决。
+1. **一条命令起草所有页面。** `draft.py` 把照片拉平、把每页摆正、把光照校匀，用 Tesseract 以双倍分辨率读两遍文字，再按实测的位置、字号和字重把每个词放回原处，并按阅读顺序排列。线条、底纹、柱子和色块直接绘制，其余线条、箭头、轮廓和图表曲线描成矢量图形。
+2. **每页一张校对图。** 拿不准的词和还没画出的笔迹会被裁出、放大，连同编号汇总到一张图上。agent 在 `fixes.json` 里改正读错的词；看不清的字绝不瞎猜。
+3. **与原稿比对。** 每次重建都叠在原稿上比较。报告逐页给出 PASS 或 FIX，并列出仍缺失的区域；agent 补上后重新构建。
+4. **长任务可续做。** 整本书会建逐页台账和 checkpoint，脱离聊天记录也能接着做（[`references/long-documents.md`](skills/scan-to-vector/references/long-documents.md)）。
+5. **交付** PDF 和一段简短说明：哪些是文字和矢量，哪些仍是光栅，哪些没有把握。
 
 细节见 [`SKILL.md`](skills/scan-to-vector/SKILL.md) 和 [`references/`](skills/scan-to-vector/references) 中的分项指南。
 
-## 辅助脚本
-
-`scripts/pdf_tool.py` 提供机械层面的证据：文字、字体、图片、矢量数量和链接。
+## 脚本
 
 ```bash
-python skills/scan-to-vector/scripts/pdf_tool.py inspect  source.pdf  --out work/source.json
-python skills/scan-to-vector/scripts/pdf_tool.py contacts rebuilt.pdf --out work/contact-sheets
-python skills/scan-to-vector/scripts/pdf_tool.py audit    rebuilt.pdf --out work/audit.json --links-root output
+S=skills/scan-to-vector/scripts
+python $S/draft.py page1.jpg page2.jpg --out work --pdf out/rebuilt.pdf   # 起草、比对、出报告
+python $S/draft.py --rebuild work --pdf out/rebuilt.pdf                   # 改完 fixes.json 后重建
+python $S/zoom.py work/p01/deskewed.png 100 200 600 500 --grid 50 --out work/zoom.png
+python $S/pdf_tool.py audit out/rebuilt.pdf --out work/audit.json
 ```
 
-审计只能发现结构问题，证明不了 OCR、图表数值或阅读顺序是对的，所以技能要求它始终与对照原稿的人工视觉复核配合使用。
+比对和审计能找出缺失和结构问题，但证明不了每个词都读对了，所以技能始终要求对照原稿校对。
 
 ## 复现演示
 
@@ -137,18 +176,31 @@ python3 -m venv .venv
 
 README 里的动画也由这些文件生成。动画中的重建页把文字转成了轮廓，在任何系统上显示都一致；PDF 本身保留的是真实文字。
 
+## 复现评测
+
+```bash
+.venv/bin/python bench/generate.py --out data --split test --count 3 --seed 9100 --hard   # 18 页带真值的测试页
+.venv/bin/python bench/packets.py make --data data/test --size 3 --out packets
+# 让你的 agent 对每组各跑两次（用与不用技能），
+# 每次输出写到 runs/<arm>/<packet>/out/rebuilt.pdf
+.venv/bin/python bench/packets.py score --packets packets --runs runs --arms baseline skill
+```
+
+评分脚本（[`bench/score.py`](bench/score.py)）先把重建页与真值对齐，再综合文字 F1、版式墨迹 F1、图形墨迹 F1 和矢量比例。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-测试会临时生成合成 PDF，不需要真实书籍。
+测试会临时生成合成页面和 PDF，不需要真实书籍。起草相关的测试需要 `tesseract`，没装时会自动跳过。
 
 ## 局限
 
 - 这是给 agent 用的工作流程，不是一键转换器。重建每页要花几分钟，也会消耗模型额度。
 - 审计通过不代表内容正确，技能要求对照原稿复核。
+- 评测集是合成的：印刷体英文页面，真值已知。手写、密集的雕版画和其他文字更难；Tesseract 默认只认英文，其他语言需要另装语言包。
 - 保留了照片或雕版插画的结果属于混合内容 PDF，交付说明会写明。
 - 删除原稿、对外发布只在你明确要求时进行，技能本身不授予这些权限。
 
