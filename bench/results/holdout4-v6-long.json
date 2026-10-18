@@ -1,0 +1,162 @@
+{
+ "models": [
+  {
+   "name": "Haiku 5.5",
+   "pages": 18,
+   "score": [
+    0.841,
+    0.997
+   ],
+   "ci95": [
+    0.089,
+    0.228
+   ],
+   "wins": [
+    17,
+    1
+   ],
+   "worst": [
+    0.558,
+    0.989
+   ],
+   "minutes": [
+    9.4,
+    9.0
+   ],
+   "minutes_median": [
+    9.4,
+    9.0
+   ],
+   "faster": 1,
+   "packets": 2,
+   "ktokens": [
+    239,
+    258
+   ],
+   "tools": [
+    40,
+    70
+   ]
+  },
+  {
+   "name": "Sonnet 5.5",
+   "pages": 18,
+   "score": [
+    0.994,
+    0.998
+   ],
+   "ci95": [
+    0.001,
+    0.008
+   ],
+   "wins": [
+    6,
+    1
+   ],
+   "worst": [
+    0.97,
+    0.99
+   ],
+   "minutes": [
+    25.7,
+    16.2
+   ],
+   "minutes_median": [
+    25.7,
+    16.2
+   ],
+   "faster": 2,
+   "packets": 2,
+   "ktokens": [
+    370,
+    320
+   ],
+   "tools": [
+    112,
+    102
+   ]
+  },
+  {
+   "name": "Opus 5.5",
+   "pages": 18,
+   "score": [
+    0.993,
+    0.998
+   ],
+   "ci95": [
+    0.002,
+    0.007
+   ],
+   "wins": [
+    9,
+    1
+   ],
+   "worst": [
+    0.982,
+    0.989
+   ],
+   "minutes": [
+    13.3,
+    14.7
+   ],
+   "minutes_median": [
+    13.3,
+    14.7
+   ],
+   "faster": 1,
+   "packets": 2,
+   "ktokens": [
+    244,
+    283
+   ],
+   "tools": [
+    76,
+    94
+   ]
+  },
+  {
+   "name": "Fable 5.1",
+   "pages": 18,
+   "score": [
+    0.837,
+    0.997
+   ],
+   "ci95": [
+    0.118,
+    0.207
+   ],
+   "wins": [
+    18,
+    0
+   ],
+   "worst": [
+    0.631,
+    0.989
+   ],
+   "minutes": [
+    10.0,
+    14.7
+   ],
+   "minutes_median": [
+    10.0,
+    14.7
+   ],
+   "faster": 0,
+   "packets": 2,
+   "ktokens": [
+    172,
+    251
+   ],
+   "tools": [
+    54,
+    78
+   ]
+  }
+ ],
+ "pages": 18,
+ "note": "18 unseen pages \u00b7 two 9-page documents \u00b7 skill v6",
+ "skill": "v6",
+ "set": "holdout4 (seeds 9300-9317, hard mode), two 9-page packets",
+ "time_label": "minutes per 9-page document",
+ "pages_label": "18 unseen pages in two 9-page documents"
+}
