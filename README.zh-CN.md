@@ -18,6 +18,7 @@
   <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-ready-d97757?style=flat-square">
   <img alt="Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square">
+  <a href="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
 </p>
 
@@ -121,7 +122,28 @@ agent 做这类任务时的失败方式是可预测的，技能的每个部分�
 
 ## 安装
 
-把技能目录复制到你所用 agent 的技能目录即可。
+### Claude Code 插件（推荐）
+
+在 Claude Code 会话里运行：
+
+```text
+/plugin marketplace add 3351666087/scan-to-vector-skill
+/plugin install scan-to-vector@scan-to-vector-skill
+```
+
+在终端里，同样的两步是 `claude plugin marketplace add 3351666087/scan-to-vector-skill` 和 `claude plugin install scan-to-vector@scan-to-vector-skill`。以后用 `claude plugin update scan-to-vector@scan-to-vector-skill` 更新。插件里的技能会带上插件名前缀，所以列表里显示为 `scan-to-vector:scan-to-vector`；直接用自然语言提出需求，效果相同。
+
+### Claude Code 和 Codex 一行安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3351666087/scan-to-vector-skill/main/install.sh | bash
+```
+
+[`install.sh`](install.sh) 会检测本机装了哪些 agent，把技能复制到 `~/.claude/skills` 和/或 `~/.codex/skills`。想自己指定目标，把命令结尾换成 `| bash -s -- --claude`、`--codex` 或 `--dir DIR`（其他客户端的技能目录）。再次运行会更新它装过的副本；你改动过的副本不会被覆盖，除非加上 `--force`，此时旧副本会先移到技能目录旁边的 `skill-backups/`。想先读一遍脚本再运行，可以克隆仓库后执行 `./install.sh`。
+
+插件和 `~/.claude/skills` 里的副本二选一即可，两者都装的话 Claude Code 会列出两个同名技能。
+
+### 手动复制
 
 ```bash
 git clone https://github.com/3351666087/scan-to-vector-skill.git
@@ -133,10 +155,12 @@ git clone https://github.com/3351666087/scan-to-vector-skill.git
 | Codex | `mkdir -p ~/.codex/skills && cp -R scan-to-vector-skill/skills/scan-to-vector ~/.codex/skills/` |
 | 其他 | 把 `skills/scan-to-vector/` 复制到客户端加载 Agent Skills 的目录 |
 
-脚本需要 Python 3.10+，以及 PyMuPDF、Pillow、numpy、scipy，OCR 还需要 `tesseract` 命令：
+### Python 依赖
+
+不论用哪种方式安装，技能的脚本都需要 Python 3.10+，以及 PyMuPDF、Pillow、numpy、scipy，OCR 还需要 `tesseract` 命令（缺少时 `install.sh` 会给出提示）：
 
 ```bash
-python3 -m pip install -r scan-to-vector-skill/skills/scan-to-vector/requirements.txt
+python3 -m pip install "PyMuPDF>=1.28.2,<2" "Pillow>=12.3.0" "numpy>=1.26" "scipy>=1.11"
 brew install tesseract        # 或：sudo apt install tesseract-ocr
 ```
 
@@ -221,6 +245,8 @@ README 里的动画也由这些文件生成。动画中的重建页把文字转�
 - 评测集是合成的：印刷体英文页面，真值已知。手写、密集的雕版画和其他文字更难；Tesseract 默认只认英文，其他语言需要另装语言包。
 - 保留了照片或雕版插画的结果属于混合内容 PDF，交付说明会写明。
 - 删除原稿、对外发布只在你明确要求时进行，技能本身不授予这些权限。
+
+如果它帮你省下了时间，给仓库点个 ⭐，能让更多人找到它。
 
 ## 致谢与来源
 

@@ -18,6 +18,7 @@
   <img alt="Works with Claude Code" src="https://img.shields.io/badge/Claude%20Code-ready-d97757?style=flat-square">
   <img alt="Works with Codex" src="https://img.shields.io/badge/Codex-ready-111827?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square">
+  <a href="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/3351666087/scan-to-vector-skill/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square"></a>
 </p>
 
@@ -121,7 +122,28 @@ If you only need searchable text on top of the scan, use an OCR layer: it is fas
 
 ## Install
 
-Copy the skill folder into your agent's skills directory.
+### Claude Code plugin (recommended)
+
+In a Claude Code session:
+
+```text
+/plugin marketplace add 3351666087/scan-to-vector-skill
+/plugin install scan-to-vector@scan-to-vector-skill
+```
+
+From a shell, the same two steps are `claude plugin marketplace add 3351666087/scan-to-vector-skill` and `claude plugin install scan-to-vector@scan-to-vector-skill`. Update later with `claude plugin update scan-to-vector@scan-to-vector-skill`. Plugin skills are prefixed with the plugin name, so the skill is listed as `scan-to-vector:scan-to-vector`; asking for it in plain language works the same.
+
+### One-line install for Claude Code and Codex
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3351666087/scan-to-vector-skill/main/install.sh | bash
+```
+
+[`install.sh`](install.sh) copies the skill into `~/.claude/skills` and/or `~/.codex/skills`, for each agent it finds on the machine. To pick the target yourself, end the command with `| bash -s -- --claude`, `--codex` or `--dir DIR` (the skills folder of any other client). Running it again updates a copy it installed. A copy you have edited is left alone unless you add `--force`, which first moves it to `skill-backups/` next to the skills folder. To read the script before running it, clone the repository and run `./install.sh`.
+
+Use the plugin or a copy in `~/.claude/skills`, not both, or Claude Code lists the skill twice.
+
+### Manual copy
 
 ```bash
 git clone https://github.com/3351666087/scan-to-vector-skill.git
@@ -133,10 +155,12 @@ git clone https://github.com/3351666087/scan-to-vector-skill.git
 | Codex | `mkdir -p ~/.codex/skills && cp -R scan-to-vector-skill/skills/scan-to-vector ~/.codex/skills/` |
 | Others | copy `skills/scan-to-vector/` into any directory your client loads Agent Skills from |
 
-The scripts need Python 3.10+ with PyMuPDF, Pillow, numpy and scipy, plus the `tesseract` command for OCR:
+### Python dependencies
+
+Whichever way you installed the skill, its scripts need Python 3.10+ with PyMuPDF, Pillow, numpy and scipy, plus the `tesseract` command for OCR (`install.sh` prints this reminder when they are missing):
 
 ```bash
-python3 -m pip install -r scan-to-vector-skill/skills/scan-to-vector/requirements.txt
+python3 -m pip install "PyMuPDF>=1.28.2,<2" "Pillow>=12.3.0" "numpy>=1.26" "scipy>=1.11"
 brew install tesseract        # or: sudo apt install tesseract-ocr
 ```
 
@@ -221,6 +245,8 @@ The tests generate synthetic pages and PDFs on the fly and need no real books. T
 - The benchmark is synthetic: printed English pages with a known ground truth. Handwriting, dense engravings and other scripts are harder, and Tesseract reads only English unless you add language packs.
 - Retained photographs or engravings make the result a mixed-content PDF, and the delivery note says so.
 - Deleting sources or publishing results happens only when you ask. The skill grants no such permission by itself.
+
+If scan-to-vector saved you an afternoon, a ⭐ on the repository helps other people find it.
 
 ## Credits
 

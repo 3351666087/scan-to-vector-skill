@@ -1,0 +1,17 @@
+{
+  "name": "scan-to-vector-skill",
+  "description": "The scan-to-vector agent skill, packaged as a Claude Code plugin.",
+  "owner": {
+    "name": "Null3351",
+    "url": "https://github.com/3351666087"
+  },
+  "plugins": [
+    {
+      "name": "scan-to-vector",
+      "source": "./",
+      "description": "Rebuild scanned pages as searchable, newly typeset PDFs with vector diagrams, checked page by page against the scan.",
+      "category": "productivity",
+      "tags": ["pdf", "scan", "ocr", "vector", "typesetting"]
+    }
+  ]
+}
