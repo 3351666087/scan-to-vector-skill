@@ -25,7 +25,7 @@
 
 OCR gives you a scan with invisible text on top. **scan-to-vector gives you the page rebuilt**: real text you can search and copy, diagrams and charts redrawn as vector paths that stay sharp at any zoom, photographs and engravings kept as clean, labelled crops. Every source page is tracked in a ledger and the rebuild is overlaid on the scan before it ships.
 
-> **Measured, not claimed:** on 18 unseen hard pages, Haiku 5.5 with this skill scored 0.993, the same as Opus 5.5 without it (0.994), and up from 0.894 on its own. [See the benchmark](#does-it-make-agents-better).
+> **Measured, not claimed:** on two 9-page scanned documents it had never seen, all four models we tested scored higher with this skill. Haiku 5.5 went from 0.841 to 0.997, and Sonnet 5.5 finished 37% faster. [See the benchmark](#does-it-make-agents-better).
 
 ## Demos
 
@@ -53,22 +53,40 @@ The agent calibrated the engraved grid, traced both lines and recovered **81 yea
 
 ## Does it make agents better?
 
-Yes, and we measured by how much. Each model got the same short request ("recreate these scanned pages as one clean PDF…") twice: once on its own and once with this skill. The pages were 18 synthetic documents the skill was never tuned on (worksheets, tables, charts, flowcharts, forms and two-column articles) in hard mode: unfamiliar typefaces, dense pages, and half of them phone photos taken at an angle, with shadows and a desk in the frame. They came as six 3-page packets, 48 agent runs in all, each scored against the ground truth for text, layout, figures and vector share (1.0 is perfect).
+Yes, and we measured it with four models. Each got the same short request ("recreate these scanned pages as one clean PDF…") twice, once on its own and once with this skill. The documents were ones the skill had never been tuned on: worksheets, tables, charts, flowcharts, forms and two-column articles in hard mode, with unfamiliar typefaces, dense pages, and half of them phone photos taken at an angle with shadows and a desk in the frame. Every page is scored against its ground truth for text, layout, figures and vector share (1.0 is perfect).
+
+**Long documents (skill v6): two 9-page documents, 18 pages, 16 runs**
 
 <p align="center">
-  <img src="assets/benchmark.svg" width="100%" alt="Dumbbell chart. Page quality without and with the skill: Haiku 5.5 0.894 to 0.993, Sonnet 5.5 0.994 to 0.996, Opus 5.5 0.994 to 0.994, Fable 5.1 0.904 to 0.992. Minutes per 3-page packet: Haiku 4.1 to 6.2, Sonnet 14.4 to 13.4, Opus 7.9 to 8.3, Fable 7.6 to 10.4.">
+  <img src="assets/benchmark.svg" width="100%" alt="Dumbbell chart for two 9-page documents. Page quality without and with the skill: Haiku 5.5 0.841 to 0.997, Sonnet 5.5 0.994 to 0.998, Opus 5.5 0.993 to 0.998, Fable 5.1 0.837 to 0.997. Minutes per 9-page document: Haiku 9.4 to 9.0, Sonnet 25.7 to 16.2, Opus 13.3 to 14.7, Fable 10.0 to 14.7.">
 </p>
 
-| Model | Score without → with | 95% CI of the gain | Pages won–lost | Worst page | Minutes per 3 pages | Tokens per 3 pages |
+| Model | Score without → with | 95% CI of the gain | Pages better–worse | Worst page | Minutes per 9 pages | Tokens per 9 pages |
+| --- | --- | --- | --- | --- | --- | --- |
+| Haiku 5.5 | 0.841 → **0.997** | +0.089 to +0.228 | 17–1 | 0.558 → 0.989 | 9.4 → 9.0 | 239k → 258k |
+| Fable 5.1 | 0.837 → **0.997** | +0.118 to +0.207 | 18–0 | 0.631 → 0.989 | 10.0 → 14.7 | 172k → 251k |
+| Sonnet 5.5 | 0.994 → **0.998** | +0.001 to +0.008 | 6–1 | 0.970 → 0.990 | 25.7 → 16.2 | 370k → 320k |
+| Opus 5.5 | 0.993 → **0.998** | +0.002 to +0.007 | 9–1 | 0.982 → 0.989 | 13.3 → 14.7 | 244k → 283k |
+
+**Short packets (skill v5): six 3-page packets, 18 pages, 48 runs**
+
+<p align="center">
+  <img src="assets/benchmark-short.svg" width="100%" alt="Dumbbell chart for six 3-page packets. Page quality without and with the skill: Haiku 5.5 0.894 to 0.993, Sonnet 5.5 0.994 to 0.996, Opus 5.5 0.994 to 0.994, Fable 5.1 0.904 to 0.992. Minutes per 3-page packet: Haiku 4.1 to 6.2, Sonnet 14.4 to 13.4, Opus 7.9 to 8.3, Fable 7.6 to 10.4.">
+</p>
+
+| Model | Score without → with | 95% CI of the gain | Pages better–worse | Worst page | Minutes per 3 pages | Tokens per 3 pages |
 | --- | --- | --- | --- | --- | --- | --- |
 | Haiku 5.5 | 0.894 → **0.993** | +0.050 to +0.160 | 16–0 | 0.634 → 0.952 | 4.1 → 6.2 | 133k → 180k |
 | Fable 5.1 | 0.904 → **0.992** | +0.050 to +0.133 | 18–0 | 0.711 → 0.951 | 7.6 → 10.4 | 124k → 187k |
 | Sonnet 5.5 | 0.994 → 0.996 | −0.003 to +0.007 | 4–2 | 0.953 → 0.972 | 14.4 → 13.4 | 215k → 235k |
 | Opus 5.5 | 0.994 → 0.994 | −0.005 to +0.006 | 7–3 | 0.985 → 0.951 | 7.9 → 8.3 | 155k → 188k |
 
-- **The cheaper model catches up.** Haiku with the skill scores the same as Opus without it, and its worst page goes from 0.63 to 0.95. Fable improved on all 18 pages.
-- **The extra minutes are the checking.** Without the skill, Haiku and Fable finish sooner because they skip work: pages come out stretched, tables drift, diagrams lose shapes. The skill makes them proofread and compare before they stop.
-- **The strongest models were already near the ceiling** on 3-page jobs. For them the skill changes little in quality, and Sonnet's median time fell from 12.9 to 9.2 minutes. Their largest losses with the skill came from draft bugs that v6 fixes (below).
+- **On long documents every model did better with the skill**, and for all four the 95% confidence interval of the gain is above zero.
+- **Cheaper models catch up.** On their own, Haiku and Fable lose their grip over a long document: pages come out stretched, tables drift and diagrams lose shapes, with worst pages of 0.56 and 0.63. With the skill both score 0.997, level with Sonnet and Opus.
+- **Strong models get faster and steadier.** Sonnet finished the 9-page documents 37% faster with fewer tokens, and the worst pages of both Sonnet and Opus improved. On short 3-page jobs they were already near the ceiling, so the gain there is within noise.
+- **The extra minutes are the checking.** Fable and Haiku spend more time with the skill on short jobs, because it makes them proofread and compare before they stop.
+
+The long-document timings come from two documents per model, so treat them as indicative.
 
 ### Why it works
 
@@ -84,8 +102,8 @@ Each version was measured on pages it had not been tuned on, and its failures sh
 
 - v1 (instructions only) made Sonnet faster but no better.
 - v3 added the one-command draft. Haiku and Fable improved a lot, but a photo-proportion bug cost Sonnet two pages, which v4 fixed.
-- v5 traces every line, arrow and chart series into vectors and adds the proofreading sheet. It produced the results above.
-- v6 fixes what those 48 runs exposed: shadowed photo corners, a skew bug on dark photos, column reading order, gridline weight, and paper size read from square checkboxes. On 18 fresh pages the draft alone, with no agent, scores 0.917 (v4), 0.969 (v5) and 0.989 (v6).
+- v5 traces every line, arrow and chart series into vectors and adds the proofreading sheet. It produced the short-packet results above.
+- v6 fixes what those 48 runs exposed: shadowed photo corners, a skew bug on dark photos, column reading order, gridline weight, and paper size read from square checkboxes. On 18 fresh pages the draft alone, with no agent, scores 0.917 (v4), 0.969 (v5) and 0.989 (v6). The long-document results above use v6.
 
 Raw numbers are in [`bench/results/`](bench/results) and the benchmark code is in [`bench/`](bench).
 

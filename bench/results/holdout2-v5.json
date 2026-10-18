@@ -156,5 +156,6 @@
  "pages": 18,
  "note": "18 unseen pages \u00b7 6 three-page packets \u00b7 skill v5",
  "skill": "v5",
- "set": "holdout2 (seeds 9100-9117, hard mode)"
+ "set": "holdout2 (seeds 9100-9117, hard mode)",
+ "time_label": "minutes per 3-page packet"
 }

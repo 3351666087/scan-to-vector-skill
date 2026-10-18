@@ -35,7 +35,8 @@ def esc(s):
     return str(s).replace("&", "&amp;").replace("<", "&lt;")
 
 
-def panel(x0, title, sub, rows, key, lo, hi, ticks, fmt, better):
+def panel(x0, title, sub, rows, key, lo, hi, ticks, fmt, better, vfmt=None):
+    vfmt = vfmt or fmt
     out = [f'<text x="{x0}" y="{TOP - 62}" class="t1" font-size="17" font-weight="600">{esc(title)}</text>',
            f'<text x="{x0}" y="{TOP - 40}" class="t2" font-size="13">{esc(sub)}</text>']
     sx = lambda v: x0 + (v - lo) / (hi - lo) * PANEL
@@ -52,8 +53,8 @@ def panel(x0, title, sub, rows, key, lo, hi, ticks, fmt, better):
         right = b >= a
         la, lb = ("end", "start") if right else ("start", "end")
         oa, ob = (-12, 12) if right else (12, -12)
-        out.append(f'<text x="{sx(a) + oa:.1f}" y="{y + 4}" class="t2" font-size="12" text-anchor="{la}">{fmt(a)}</text>')
-        out.append(f'<text x="{sx(b) + ob:.1f}" y="{y + 4}" class="t1" font-size="12" font-weight="600" text-anchor="{lb}">{fmt(b)}</text>')
+        out.append(f'<text x="{sx(a) + oa:.1f}" y="{y + 4}" class="t2" font-size="12" text-anchor="{la}">{vfmt(a)}</text>')
+        out.append(f'<text x="{sx(b) + ob:.1f}" y="{y + 4}" class="t1" font-size="12" font-weight="600" text-anchor="{lb}">{vfmt(b)}</text>')
     out.append(f'<text x="{x0 + PANEL}" y="{TOP - 40}" class="t3" font-size="12" text-anchor="end">{esc(better)}</text>')
     return out
 
@@ -69,14 +70,14 @@ def main() -> int:
         y = TOP + i * ROW + 12
         svg.append(f'<text x="{LEFT - 24}" y="{y + 5}" class="t1" font-size="15" font-weight="600" text-anchor="end">{esc(r["name"])}</text>')
         svg.append(f'<text x="{LEFT - 24}" y="{y + 23}" class="t3" font-size="11.5" text-anchor="end">wins {r["wins"][0]}–{r["wins"][1]}</text>')
-    s_lo = min(min(r["score"]) for r in rows)
-    s_lo = min(0.90, int(s_lo * 50) / 50)
+    s_lo = min(0.90, int(min(min(r["score"]) for r in rows) * 20) / 20)      # whole 0.05 steps
+    ticks = [round(s_lo + 0.05 * k, 2) for k in range(int(round((1 - s_lo) / 0.05)) + 1)]
     svg += panel(LEFT, "Page quality", f"mean score, {res['pages']} unseen pages", rows, "score", s_lo, 1.0,
-                 [round(s_lo + k * (1 - s_lo) / 4, 3) for k in range(5)], lambda v: f"{v:.3f}".rstrip("0").rstrip(".") if v < 1 else "1.0", "higher is better →")
+                 ticks, lambda v: f"{v:.2f}" if v < 1 else "1.0", "higher is better →", vfmt=lambda v: f"{v:.3f}")
     m_hi = max(max(r["minutes"]) for r in rows)
     m_hi = (int(m_hi / 4) + 1) * 4
-    svg += panel(LEFT + PANEL + 70, "Time", "minutes per 3-page packet", rows, "minutes", 0, m_hi,
-                 list(range(0, m_hi + 1, max(2, m_hi // 4))), lambda v: f"{v:.1f}" if v % 1 else f"{int(v)}", "← lower is better")
+    svg += panel(LEFT + PANEL + 70, "Time", res.get("time_label", "minutes per 3-page packet"), rows, "minutes", 0, m_hi,
+                 list(range(0, m_hi + 1, max(2, m_hi // 4))), lambda v: f"{int(v)}", "← lower is better", vfmt=lambda v: f"{v:.1f}")
     ly = H - 22
     svg += [f'<circle cx="{LEFT}" cy="{ly - 4}" r="6" class="kw"/>',
             f'<text x="{LEFT + 12}" y="{ly}" class="t2" font-size="13">without the skill</text>',
