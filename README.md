@@ -242,7 +242,8 @@ The tests generate synthetic pages and PDFs on the fly and need no real books. T
 
 - This is a workflow for an agent, not a one-click converter. Rebuilding takes minutes per page and costs model time.
 - An audit passing does not mean the content is right; the skill requires review against the source.
-- The benchmark is synthetic: printed English pages with a known ground truth. Handwriting, dense engravings and other scripts are harder, and Tesseract reads only English unless you add language packs.
+- The benchmark is synthetic: printed English pages with a known ground truth. Handwriting and dense engravings are harder.
+- OCR runs Tesseract's English model only. The scripts have no language option, so installing Tesseract language packs changes nothing. Pages in other scripts, Chinese included, are not supported yet. The rebuilt text is also set in the standard PDF fonts (Times, Helvetica, Courier), which have no CJK glyphs.
 - Retained photographs or engravings make the result a mixed-content PDF, and the delivery note says so.
 - Deleting sources or publishing results happens only when you ask. The skill grants no such permission by itself.
 
