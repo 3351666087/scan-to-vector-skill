@@ -30,11 +30,12 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from canvas import load_probe  # noqa: E402
+from canvas import CJK_CLASS, load_probe  # noqa: E402
 from shapes import ink_mask  # noqa: E402
 
 INK = 165
 TOL = 3
+ONE_CJK = re.compile(f"([{CJK_CLASS}])")
 
 
 def luminance(a):
@@ -43,6 +44,12 @@ def luminance(a):
 
 def norm(w):
     return re.sub(r"^[^\w]+|[^\w]+$", "", w.lower())
+
+
+def tokens(text):
+    """The words of a text for counting, each Chinese or Japanese character a word of its own:
+    that text has no spaces, and OCR and the PDF split it into words at different places."""
+    return [p for t in text.split() for p in ONE_CJK.split(t) if p]
 
 
 def components(mask, limit=12, min_area=40):
@@ -93,14 +100,14 @@ def compare_page(pdf: Path, probe_path: Path, out: Path, pass_f1: float = 0.92,
     faint = ndi.binary_dilation(luminance(scan) < 215, disk)   # pale rules and tints still count as "on the scan"
     extra_mask = o_ink & ~s_d & ~faint
 
-    ocr = Counter(norm(t) for l in probe["lines"] for wd in l["words"] if wd["conf"] >= 60 for t in wd["text"].split())
-    ocr.update(norm(w) for a in probe.get("_added", []) for w in a["text"].split())
+    ocr = Counter(norm(t) for l in probe["lines"] for wd in l["words"] if wd["conf"] >= 60 for t in tokens(wd["text"]))
+    ocr.update(norm(w) for a in probe.get("_added", []) for w in tokens(a["text"]))
     ocr.pop("", None)
-    pdf_words = Counter(norm(x[4]) for x in page.get_text("words"))
+    pdf_words = Counter(norm(t) for x in page.get_text("words") for t in tokens(x[4]))
     pdf_words.pop("", None)
     missing_words = sorted((ocr - pdf_words).elements())
-    known = Counter(norm(t) for l in probe["lines"] for wd in l["words"] for t in wd["text"].split())
-    known.update(norm(w) for a in probe.get("_added", []) for w in a["text"].split())
+    known = Counter(norm(t) for l in probe["lines"] for wd in l["words"] for t in tokens(wd["text"]))
+    known.update(norm(w) for a in probe.get("_added", []) for w in tokens(a["text"]))
     unseen_words = sorted((pdf_words - known).elements())
 
     colours = []

@@ -17,6 +17,9 @@ copied from probe.json land exactly where they were on the scan.
 
 Fonts: "serif" (Times), "sans" (Helvetica), "mono" (Courier), each with
 bold/italic; or register any TTF/OTF with c.add_font("name", "path.ttf").
+Characters a font can't draw (Chinese, Japanese, curly quotes, dashes) come
+from a fallback face: PyMuPDF's built-in Droid Sans Fallback, embedded and
+subset, or your own with c.add_font("name", "path.ttf", fallback=True).
 Sizes and widths are in scan pixels. Colours are "#rrggbb" or (r, g, b) 0..1.
 Raster crops (c.image) are listed in the PDF's metadata so the delivery note
 can say which regions are not vector.
@@ -24,11 +27,22 @@ can say which regions are not vector.
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from pathlib import Path
 
 import pymupdf
+
+# Chinese and Japanese text is written without spaces between words. These ranges are its
+# characters and punctuation (Hangul is left out: Korean puts spaces between words).
+CJK_RANGES = ((0x2E80, 0x9FFF), (0xF900, 0xFAFF), (0xFE30, 0xFE4F), (0xFF00, 0xFFEF), (0x20000, 0x3FFFF))
+CJK_CLASS = "".join(f"{chr(a)}-{chr(b)}" for a, b in CJK_RANGES)        # for a regex [...]
+# Ink of a Han character in the fallback face, in em above and below the baseline
+# (Droid Sans Fallback; tests/test_cjk.py checks them). probe.py turns the ink height of
+# Chinese text into a font size, and its ink bottom into a baseline, with these.
+CJK_ASCENT, CJK_DESCENT = 0.81, 0.09
+FALLBACK = "fallback"                      # resource name of the built-in fallback face
 
 BASE14 = {
     ("serif", False, False): "tiro", ("serif", True, False): "tibo",
@@ -47,6 +61,64 @@ def colour(c):
         c = c.lstrip("#")
         return tuple(int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
     return tuple(c)
+
+
+def is_cjk(ch):
+    """A Chinese or Japanese character or CJK punctuation: set solid, no spaces between."""
+    o = ord(ch)
+    return any(a <= o <= b for a, b in CJK_RANGES)
+
+
+def cjk_letter(ch):
+    """A Han character or kana: CJK text that fills its em square (not punctuation)."""
+    o = ord(ch)
+    return 0x3040 <= o <= 0x30FF or 0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF or 0xF900 <= o <= 0xFAFF \
+        or 0x20000 <= o <= 0x3FFFF
+
+
+def cjk_word(text):
+    """True when every character of an OCR word is CJK (no Latin letters or digits)."""
+    text = text.strip()
+    return bool(text) and all(is_cjk(c) for c in text)
+
+
+def solid(a, b):
+    """True when no space goes between character a and the next one, b: both are CJK, or one is
+    full-width CJK punctuation, which carries its own blank (English，then)."""
+    return (is_cjk(a) and is_cjk(b)) or (is_cjk(a) and not cjk_letter(a)) or (is_cjk(b) and not cjk_letter(b))
+
+
+def join_words(words):
+    """Join OCR words (dicts with "text", or strings) into a line of text: with spaces, except
+    where solid() says none (CJK), unless a measured blank ("space_before") separates them."""
+    out = ""
+    for w in words:
+        t = (w["text"] if isinstance(w, dict) else w).strip()
+        gap = isinstance(w, dict) and w.get("space_before")
+        if t:
+            out += t if not out or (solid(out[-1], t[0]) and not gap) else " " + t
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _fallback_pil(size=200):
+    import io
+    from PIL import ImageFont
+    return ImageFont.truetype(io.BytesIO(pymupdf.Font("cjk").buffer), size)
+
+
+@functools.lru_cache(maxsize=4096)
+def side_bearings(ch):
+    """Blank left and right of a glyph's ink in the fallback face, in em (0, 0 for a blank)."""
+    from PIL import Image, ImageDraw
+    font = _fallback_pil()
+    size, adv = font.size, font.getlength(ch)
+    im = Image.new("L", (int(adv) + 2 * size, 2 * size))
+    ImageDraw.Draw(im).text((size, int(1.5 * size)), ch, font=font, fill=255, anchor="ls")
+    box = im.getbbox()
+    if not box:
+        return 0.0, 0.0
+    return (box[0] - size) / size, (size + adv - box[2]) / size
 
 
 def reading_order(lines, page_width=None):
@@ -103,13 +175,14 @@ def load_probe(probe_path):
         data["lines"][li]["words"][wi]["conf"] = 100.0
     for line in data["lines"]:
         line["words"] = [w for w in line["words"] if w["text"].strip()]
-        line["text"] = " ".join(w["text"] for w in line["words"])
+        line["text"] = join_words(line["words"])
     data["lines"] = [l for l in data["lines"] if l["words"]]
     added = []
     for a in fixes.get("add", []):                     # text OCR missed, placed in reading order
         size = a.get("size", 30)
         x, base = a["x"], a["baseline"]
-        word = {"text": a["text"], "conf": 100.0, "natural": True, "box": [x, base - size * 0.75, x + size * 0.5 * len(a["text"]), base],
+        wide = size * sum(1.0 if is_cjk(ch) else 0.5 for ch in a["text"])
+        word = {"text": a["text"], "conf": 100.0, "natural": True, "box": [x, base - size * 0.75, x + wide, base],
                 "bold": a.get("bold", False), "italic": a.get("italic", False), "color": a.get("color", "#000000")}
         added.append({"text": a["text"], "box": [round(v) for v in word["box"]], "baseline": base, "size_px": size,
                       "words": [word], "align": a.get("align", "left"), **({"font": a["font"]} if "font" in a else {})})
@@ -130,6 +203,8 @@ class Canvas:
         self.probe = probe or {}
         self.fonts: dict[str, pymupdf.Font] = {}
         self.custom: dict[str, str] = {}
+        self.fallback: str | None = None       # face for characters the chosen font can't draw
+        self.embedded: set[str] = set()
         self.rasters: list[list[float]] = []
         self.placed_words = 0
 
@@ -150,11 +225,15 @@ class Canvas:
         pg = page or data.get("page", {})
         return cls(w, h, pg.get("width_pt", 612), pg.get("height_pt"), probe=data)
 
-    def add_font(self, name: str, path: str):
-        """Register a TTF/OTF (for glyphs the built-in fonts lack, or a closer match)."""
+    def add_font(self, name: str, path: str, fallback: bool = False):
+        """Register a TTF/OTF (for glyphs the built-in fonts lack, or a closer match). With
+        fallback=True it also draws every character the chosen font can't, in place of the
+        built-in Droid Sans Fallback (e.g. a Song/Ming face for a Chinese book)."""
         self.page.insert_font(fontname=name, fontfile=str(path))
         self.fonts[name] = pymupdf.Font(fontfile=str(path))
         self.custom[name] = str(path)
+        if fallback:
+            self.fallback = name
 
     def _font(self, font, bold, italic):
         if font in self.custom:
@@ -166,19 +245,57 @@ class Canvas:
             self.fonts[name] = pymupdf.Font(name)
         return self.fonts[name]
 
+    def _fallback(self):
+        """Name of the fallback face; the built-in one is loaded on first use."""
+        if self.fallback is None:                         # Droid Sans Fallback, built into PyMuPDF
+            self.fonts[FALLBACK], self.custom[FALLBACK] = pymupdf.Font("cjk"), "pymupdf:cjk"
+            self.fallback = FALLBACK
+        return self.fallback
+
+    def _embed(self, runs):
+        """Put the built-in fallback face in the page once text drawn with it needs it (only
+        then: subset_fonts() keeps just the glyphs used, and an unused face would stay whole)."""
+        if any(f == FALLBACK for f, _ in runs) and FALLBACK not in self.embedded:
+            self.page.insert_font(fontname=FALLBACK, fontbuffer=self.fonts[FALLBACK].buffer)
+            self.embedded.add(FALLBACK)
+
+    def _drawable(self, name, ch):
+        if ch == " ":
+            return True
+        if name in self.custom:                          # embedded TrueType: any glyph it has
+            return bool(self.fonts[name].has_glyph(ord(ch)))
+        return ord(ch) < 256 and bool(self._fobj(name).has_glyph(ord(ch)))   # Base14 text is Latin-1
+
+    def _runs(self, s, name):
+        """Split s into [font, text] runs: `name` where it has the glyph, else the fallback face."""
+        runs = []
+        for ch in s:
+            f = name if self._drawable(name, ch) else self._fallback()
+            if f != name and not self._fobj(f).has_glyph(ord(ch)):
+                f = name                                 # neither has it: leave it to the chosen font
+            if runs and runs[-1][0] == f:
+                runs[-1][1] += ch
+            else:
+                runs.append([f, ch])
+        return runs or [[name, ""]]
+
     def P(self, x, y):
         return pymupdf.Point(x * self.k, y * self.k)
 
     # ------------------------------------------------------------ text
     def text_width(self, s, size, font="serif", bold=False, italic=False):
-        return self._fobj(self._font(font, bold, italic)).text_length(s, fontsize=size)
+        return sum(self._fobj(f).text_length(t, fontsize=size) for f, t in self._runs(s, self._font(font, bold, italic)))
 
     def text(self, x, baseline, s, size, font="serif", bold=False, italic=False, color="#000000",
-             width=None, align="left", angle=0.0, max_stretch=0.3):
+             width=None, align="left", angle=0.0, max_stretch=0.3, space=True):
         """Place text with its baseline at y. `width` (px) fits the text to a measured width by
-        stretching it horizontally up to +/- max_stretch; align is left/center/right."""
+        stretching it horizontally up to +/- max_stretch; align is left/center/right.
+        Characters the font can't draw come from the fallback face. A space follows the text so
+        copied text keeps its word breaks; space=False leaves it out (between CJK characters)."""
         name = self._font(font, bold, italic)
-        natural = self._fobj(name).text_length(s, fontsize=size)
+        runs = self._runs(s, name)
+        lengths = [self._fobj(f).text_length(t, fontsize=size) for f, t in runs]
+        natural = sum(lengths)
         sx = 1.0
         if width and natural > 0:
             sx = min(max(width / natural, 1 - max_stretch), 1 + max_stretch)
@@ -191,8 +308,14 @@ class Canvas:
         m = pymupdf.Matrix(sx, 1)
         if angle:
             m = m * pymupdf.Matrix(-angle)
-        self.page.insert_text(pt, s + " ", fontname=name, fontsize=size * self.k, color=colour(color),
-                              morph=(pt, m) if (sx != 1 or angle) else None)
+        if space:
+            runs[-1][1] += " "
+        self._embed(runs)
+        off = 0.0
+        for (f, t), n in zip(runs, lengths):              # each run placed after the last, all
+            self.page.insert_text(self.P(x + off, baseline), t, fontname=f, fontsize=size * self.k,
+                                  color=colour(color), morph=(pt, m) if (sx != 1 or angle) else None)
+            off += n                                      # stretched and turned about the start
         self.placed_words += len(s.split())
         return x + w
 
@@ -202,21 +325,26 @@ class Canvas:
 
         lines: probe.json "lines" (edit their "text"/"words" first to fix OCR errors).
         skip:  optional function(line) -> True to leave a line out (e.g. labels you redraw).
-        A word whose "text" you corrected keeps its measured box.
+        A word whose "text" you corrected keeps its measured box. Chinese and Japanese words
+        follow each other without a space, so copied text reads as it was written.
         """
         for line in lines:
             if skip and skip(line):
                 continue
             size = line.get("size_px", 30) * size_scale
             base = line["baseline"]
-            for wd in line["words"]:
-                if wd.get("conf", 100) < min_conf or not wd["text"].strip():
-                    continue
+            words = [wd for wd in line["words"] if wd.get("conf", 100) >= min_conf and wd["text"].strip()]
+            for i, wd in enumerate(words):
                 x0, _, x1, _ = wd["box"]
+                nxt = words[i + 1] if i + 1 < len(words) else None
+                last = wd["text"].rstrip()[-1]
+                joined = (is_cjk(last) and nxt is None) or (
+                    nxt is not None and solid(last, nxt["text"].lstrip()[0]) and not nxt.get("space_before"))
                 bold = wd.get("bold", line.get("bold", False)) or wd["text"] in bold_words
                 self.text(x0, base, wd["text"], size, font=line.get("font", font), bold=bold,
                           italic=wd.get("italic", line.get("italic", italic)), color=wd.get("color", color),
-                          width=None if wd.get("natural") else x1 - x0, align=line.get("align", "left"))
+                          width=None if wd.get("natural") else x1 - x0, align=line.get("align", "left"),
+                          space=not joined)
 
     # ------------------------------------------------------------ vector shapes
     def _finish(self, shape, stroke, width, fill=None, dash=None, closed=False, cap=0, join=0):
