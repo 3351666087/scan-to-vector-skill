@@ -3,6 +3,7 @@
 
     python draft.py page1.jpg [page2.jpg ...] --out work --pdf out/rebuilt.pdf
     python draft.py --rebuild work --pdf out/rebuilt.pdf      # after you edit anything
+    python draft.py page.jpg --lang chi_sim+eng ...           # Chinese (experimental)
 
 For each page, `draft` measures it (probe.py), picks the closer text face
 (serif or sans), finds shaded and coloured fills and rule colours, traces every
@@ -34,7 +35,7 @@ from scipy import ndimage as ndi
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from canvas import Canvas  # noqa: E402
-from canvas import load_probe  # noqa: E402
+from canvas import is_cjk, load_probe  # noqa: E402
 from compare import compare_page  # noqa: E402
 from probe import PAPER, luminance, probe_page  # noqa: E402
 from shapes import find_shapes, find_washes, ink_mask  # noqa: E402
@@ -243,7 +244,9 @@ def rule_colours(rgb, rules):
 
 
 def choose_font(page_dir, probe, rgb):
-    """Render the text in serif and in sans; keep the one whose ink sits closer to the scan's."""
+    """Render the text in serif and in sans; keep the one whose ink sits closer to the scan's.
+    Chinese and Japanese characters come from the same fallback face either way, so only the
+    Latin text decides; on a page with none the two tie and serif is kept."""
     lum = luminance(rgb)
     scan_ink = lum < 150
     mask = np.zeros_like(scan_ink)
@@ -309,11 +312,12 @@ def square_check(probe):
     return None
 
 
-def draft_page(scan: Path, page_dir: Path, n: int, work: Path, pdf: Path, paper: str = "auto"):
-    probe = probe_page(scan, page_dir, paper=paper)
+def draft_page(scan: Path, page_dir: Path, n: int, work: Path, pdf: Path, paper: str = "auto",
+               lang: str | None = None):
+    probe = probe_page(scan, page_dir, paper=paper, lang=lang)
     fix = square_check(probe) if paper == "auto" else None
     if fix:                                       # its checkboxes say the photo's proportions were off
-        probe = probe_page(scan, page_dir, paper=fix)
+        probe = probe_page(scan, page_dir, paper=fix, lang=lang)
         probe["photo_aspect"]["corrected_by"] = "checkboxes"
         (page_dir / "probe.json").write_text(json.dumps(probe, indent=1))
     rgb = np.asarray(Image.open(page_dir / probe["image"]).convert("RGB")).astype(np.float32)
@@ -365,7 +369,11 @@ def proof_sheet(page_dir: Path, probe: dict, cmp: dict, limit: int = 36):
     cw, ch, cols = 440, 110, 3
     sheet = Image.new("RGB", (cw * cols, 34 + ch * ((len(items) + cols - 1) // cols)), "white")
     d = ImageDraw.Draw(sheet)
-    font = ImageFont.load_default(size=17)
+    if any(is_cjk(c) for _, label, _ in items for c in label):     # the default face has no CJK glyphs
+        import io
+        font = ImageFont.truetype(io.BytesIO(pymupdf.Font("cjk").buffer), 17)
+    else:
+        font = ImageFont.load_default(size=17)
     d.text((8, 7), "Scan crop above, current reading below. Correct wrong readings in fixes.json.", fill="black", font=font)
     for i, (key, label, box) in enumerate(items):
         x0, y0, x1, y1 = box
@@ -441,6 +449,8 @@ def main() -> int:
     ap.add_argument("--paper", action="append", default=[],
                     help="photographed pages: auto (snap to the nearest standard size), none, or letter/a4/legal/a5; "
                          "N=SIZE for page N only (repeatable), e.g. --paper 3=letter")
+    ap.add_argument("--lang", help="Tesseract languages, passed as -l, e.g. chi_sim+eng (experimental for "
+                                   "Chinese; needs that traineddata). Default: Tesseract's own, English")
     args = ap.parse_args()
     if args.rebuild:
         return 0 if rebuild(args.rebuild.resolve(), args.pdf.resolve(), args.pass_f1) else 1
@@ -455,7 +465,7 @@ def main() -> int:
             continue                              # redraft just the pages named, keep the rest
         page_dir = work / f"p{n:02d}"
         print(f"drafting {scan} -> {page_dir}", file=sys.stderr)
-        draft_page(scan.resolve(), page_dir, n, work, args.pdf.resolve(), per_page.get(n, default))
+        draft_page(scan.resolve(), page_dir, n, work, args.pdf.resolve(), per_page.get(n, default), args.lang)
     return 0 if rebuild(work, args.pdf.resolve(), args.pass_f1) else 1
 
 

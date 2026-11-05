@@ -236,14 +236,14 @@ README 里的动画也由这些文件生成。动画中的重建页把文字转�
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-测试会临时生成合成页面和 PDF，不需要真实书籍。起草相关的测试需要 `tesseract`，没装时会自动跳过。
+测试会临时生成合成页面和 PDF，不需要真实书籍。起草相关的测试需要 `tesseract`，没装时会自动跳过；中文那一项还需要 Tesseract 的 `chi_sim` 语言数据。
 
 ## 局限
 
 - 这是给 agent 用的工作流程，不是一键转换器。重建每页要花几分钟，也会消耗模型额度。
 - 审计通过不代表内容正确，技能要求对照原稿复核。
 - 评测集是合成的：印刷体英文页面，真值已知。手写和密集的雕版画更难。
-- OCR 只用 Tesseract 的英文模型。脚本没有选择语言的选项，所以另装 Tesseract 语言包不会改变结果。中文等其他文字的页面暂不支持。重建时文字用的是 PDF 标准字体（Times、Helvetica、Courier），这些字体没有中文字形。
+- OCR 默认用 Tesseract 的英文模型，给 `draft.py` 或 `probe.py` 加 `--lang` 才会换语言。**中文支持是实验性的，不在评测集里。** 装好 Tesseract 的 `chi_sim` 语言数据（`brew install tesseract-lang` 或 `sudo apt install tesseract-ocr-chi-sim`）后，`--lang chi_sim+eng` 能识别横排印刷的简体中文，夹杂的英文也能识别。重建时中文用 Droid Sans Fallback 排版，字体嵌入并子集化，字与字之间不加空格；与原稿比对时按字计数。目前只在合成页面上测试过。中文一律用这一种黑体，没有粗体和斜体，可以用 `c.add_font(name, path, fallback=True)` 换成更接近原稿的字体。不支持竖排。繁体中文（`chi_tra`）和日文（`jpn`）未经测试；其他 `--lang` 取值原样交给 Tesseract，同样未经测试。
 - 保留了照片或雕版插画的结果属于混合内容 PDF，交付说明会写明。
 - 删除原稿、对外发布只在你明确要求时进行，技能本身不授予这些权限。
 

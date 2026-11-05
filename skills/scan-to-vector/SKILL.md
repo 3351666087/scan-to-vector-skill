@@ -25,9 +25,10 @@ Check all four before you report success.
    - **Photos** are flattened and snapped to the nearest standard paper size (square checkboxes correct it when present).
    - If the report says a page's **proportions are ambiguous**, check a shape of known proportions before proofreading. If needed, redraft just that page: `--paper 3=letter`.
    - For books, receipts and other odd sizes add `--paper none`.
+   - **Chinese pages (experimental, not in the benchmark):** add `--lang chi_sim+eng`, which needs Tesseract's `chi_sim` data. It reads printed, horizontal simplified Chinese. Chinese is set in an embedded fallback face with no spaces between characters, and without bold or italic. Vertical text is not supported. Say so in your note.
 2. **Proofread each page from its sheet.** Open `work/pNN/compare/words.png`. Each crop from the scan has an id and the current reading under it.
    - **A wrong reading:** put the right text in `work/pNN/fixes.json` under its id. Use `""` to delete a reading that is not text.
-   - **"?" (ink not drawn yet):** if it is text, add it with the position from the report's box (x = left edge, baseline = bottom of letters without descenders). Use the size of the neighbouring line in `probe.json` (`size_px`).
+   - **"?" (ink not drawn yet):** if it is text, add it with the position from the report's box (x = left edge, baseline = bottom of letters without descenders). Use the size of the neighbouring line in `probe.json` (`size_px`). Chinese characters reach a little below the baseline, so for them take the neighbouring line's `baseline` too.
    ```json
    {"words": {"13.0": "(B)", "19.0": "8 cm", "4.2": ""},
     "add": [{"text": "h", "x": 561, "baseline": 1122, "size": 30, "italic": true}]}
@@ -49,7 +50,7 @@ c.rect((x0, y0, x1, y1), width=2, fill=None)   c.circle((cx, cy), r, width=2)   
 c.arrow(p0, p1, width=2, head=12)         c.checkbox((x0, y0, x1, y1), checked=True)
 c.arc((cx, cy), r, 0, 90, sector=True, fill="#f45f3f")
 ```
-Sample colours from `deskewed.png` instead of guessing. `c.add_font(name, path)` registers a TTF for glyphs the built-in fonts lack. Keep measured sizes and widths; "tidy" round values drift from the original.
+Sample colours from `deskewed.png` instead of guessing. Characters the built-in fonts lack (Chinese, curly quotes, dashes) come from an embedded fallback face automatically. `c.add_font(name, path)` registers a TTF for a closer match; with `fallback=True` it replaces the fallback face. Keep measured sizes and widths; "tidy" round values drift from the original.
 
 ## Larger jobs
 For books, multi-file sets and resumable projects, read `references/long-documents.md` (page ledger, checkpoints, parallel work). Charts as data, and figures the tracer can't handle (photos, engravings): `references/figures.md`. Pagination, links and release: `references/render-and-release.md`. `scripts/pdf_tool.py` audits fonts, images and links in the finished PDFs. Single-page tools remain available: `probe.py`, `canvas.py`, `compare.py`.

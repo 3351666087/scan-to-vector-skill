@@ -10,6 +10,7 @@ Writes, in one coordinate system (pixels of the straightened scan):
   preview.png    the measurements drawn over the scan, to check at a glance
 
 Needs Pillow, numpy and the `tesseract` command. scipy is used if present.
+--lang passes Tesseract's -l (e.g. chi_sim+eng; experimental for Chinese).
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from canvas import reading_order  # noqa: E402
+from canvas import CJK_ASCENT, CJK_DESCENT, cjk_letter, cjk_word, join_words, reading_order, side_bearings  # noqa: E402
 from shapes import chroma_clusters  # noqa: E402
 
 try:
@@ -223,34 +224,166 @@ def is_italic(sub):
     return sheared > 1.18 * upright
 
 
+def cjk_band(ink, cols, y0, y1):
+    """Top and bottom row of the ink of a line of Chinese or Japanese text whose OCR boxes put
+    it about rows y0..y1, counting only the ink in `cols` (a mask of its columns)."""
+    h = max(y1 - y0, 4)
+    top = max(int(y0 - 0.3 * h), 0)
+    prof = ink[top:int(y1 + 0.3 * h) + 1][:, cols].sum(1)
+    if not len(prof) or prof.max() <= 0:
+        return None
+    rows = np.flatnonzero(prof > 0.04 * prof.max())
+    segs = np.split(rows, np.flatnonzero(np.diff(rows) > max(2, 0.1 * h)) + 1)
+    seg = max(segs, key=lambda s: prof[s].sum())          # the line itself, not a neighbour's edge
+    return top + int(seg[0]), top + int(seg[-1]) + 1
+
+
+def cjk_frame(ink, words):
+    """(ink top, ink bottom, baseline, font size) of a line from the words with Han or kana
+    characters, whose ink spans CJK_ASCENT above the baseline and CJK_DESCENT below it (in em),
+    or None. Words of only CJK are preferred: Latin descenders would stretch the frame."""
+    words = [w for w in words if cjk_word(w["text"])] or words
+    cols = np.zeros(ink.shape[1], bool)
+    for w in words:
+        cols[max(w["box"][0], 0):max(w["box"][2], 0)] = True
+    band = cjk_band(ink, cols, np.median([w["box"][1] for w in words]), np.median([w["box"][3] for w in words]))
+    if band is None:
+        return None
+    top, bottom = band
+    size = (bottom - top) / (CJK_ASCENT + CJK_DESCENT)
+    return top, bottom, int(round(bottom - CJK_DESCENT * size)), size
+
+
+def set_cells(words, inked, x0, x1, top, bottom, em):
+    """Cut the ink span x0..x1 of a run of CJK words into one even cell per character. A blank
+    between two words wider than their glyphs' side bearings explain is a space (第一章　总则):
+    the words on each side are fitted apart. `inked` marks the inked columns of the line."""
+    chars = "".join(w["text"].strip() for w in words)
+    lsb, rsb = side_bearings(chars[0])[0], side_bearings(chars[-1])[1]
+    span = len(chars) - lsb - rsb                     # ink width of the run, in characters
+    if span < 0.5:
+        return
+    pitch = (x1 - x0) / span
+    best, b = None, 0                                 # the widest unexplained blank at a word break
+    blank = ~inked[x0:x1]
+    for k, w in enumerate(words[:-1], 1):
+        b += len(w["text"].strip())
+        gx = int(round((b - lsb) * pitch))            # the break, where an even pitch puts it
+        if not 0 < gx < len(blank) or not blank[gx]:
+            continue
+        g0 = gx - int(np.argmin(blank[gx::-1])) + 1 if not blank[:gx + 1].all() else 0
+        g1 = gx + int(np.argmin(blank[gx:])) if not blank[gx:].all() else len(blank)
+        extra = (g1 - g0) / pitch - side_bearings(chars[b - 1])[1] - side_bearings(chars[b])[0]
+        if extra > 0.2 and (best is None or extra > best[0]):
+            best = (extra, k, x0 + g0, x0 + g1)
+    if best:
+        _, k, g0, g1 = best
+        words[k]["space_before"] = True               # so the copied text keeps it too
+        set_cells(words[:k], inked, x0, g0, top, bottom, em)
+        set_cells(words[k:], inked, g1, x1, top, bottom, em)
+        return
+    if not 0.8 * em <= pitch <= 1.3 * em:
+        return                                        # a character missed or spaced out: keep OCR's boxes
+    x = x0 - lsb * pitch
+    for w in words:
+        n = len(w["text"].strip())
+        w["box"] = [int(round(x)), top, int(round(x + n * pitch)), bottom]
+        w["cell"] = True
+        x += n * pitch
+
+
+def cjk_cells(words, ink):
+    """Tesseract reads Chinese and Japanese characters well but boxes them loosely: a box can
+    sit a whole character away from its ink. Such text is set on an even pitch, so each run of
+    CJK words (up to a Latin word, the line's end, or a blank wider than 1.5 characters) is
+    measured again from the ink: its first to last inked column, less the side bearings of its
+    first and last glyph, cut into one cell per character. Each word gets the cells of its
+    characters as its box, marked "cell": the box is the characters' advance, not their ink.
+    `words` is one OCR line in reading order; it is changed in place and returned."""
+    letters = [w for w in words if cjk_word(w["text"]) and any(cjk_letter(c) for c in w["text"])]
+    frame = cjk_frame(ink, letters) if ink is not None and letters else None
+    if frame is None:
+        return words
+    top, bottom, _, em = frame
+    inked = ink[top:bottom].any(0)
+    i = 0
+    while i < len(words):
+        if not cjk_word(words[i]["text"]):
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(words) and cjk_word(words[j + 1]["text"]):
+            j += 1
+        run = words[i:j + 1]
+        lo = words[i - 1]["box"][2] + 1 if i else int(run[0]["box"][0] - 0.6 * em)
+        hi = words[j + 1]["box"][0] - 1 if j + 1 < len(words) else int(run[-1]["box"][2] + 0.6 * em)
+        lo, hi = max(lo, 0), min(hi, len(inked))
+        xs = lo + np.flatnonzero(inked[lo:hi]) if hi > lo else np.array([], int)
+        if len(xs):
+            pieces = [(int(p[0]), int(p[-1]) + 1) for p in np.split(xs, np.flatnonzero(np.diff(xs) > 1.5 * em) + 1)]
+            ks = [min(range(len(pieces)), key=lambda k: max(pieces[k][0] - c, c - pieces[k][1], 0))
+                  for c in ((w["box"][0] + w["box"][2]) / 2 for w in run)]
+            if ks == sorted(ks):                      # each piece takes a stretch of the words in order
+                for k, (x0, x1) in enumerate(pieces):
+                    group = [w for w, kk in zip(run, ks) if kk == k]
+                    if group:
+                        set_cells(group, inked, x0, x1, top, bottom, em)
+        i = j + 1
+    return words
+
+
+def stroke_weight(word_ink, size):
+    """Mean stroke width (2 * area / edge length) relative to the font size, or None."""
+    if word_ink.sum() <= 10:
+        return None
+    edges = (word_ink[1:] != word_ink[:-1]).sum() + (word_ink[:, 1:] != word_ink[:, :-1]).sum()
+    edges += word_ink[0].sum() + word_ink[-1].sum() + word_ink[:, 0].sum() + word_ink[:, -1].sum()
+    return float(2 * word_ink.sum() / max(edges, 1) / max(size, 1))
+
+
 def measure_line(ink, line):
     """Baseline, ascender/cap height and font size from the ink itself (OCR boxes are often
-    the full line height for every word)."""
+    the full line height for every word). A line with Chinese or Japanese text is measured on
+    the ink of those characters (see cjk_frame); its words get no italic or bold guess."""
     x0, y0, x1, y1 = line["box"]
-    pad = max(2, (y1 - y0) // 6)
-    top = max(y0 - pad, 0)
-    sub = ink[top:y1 + pad, x0:x1]
-    prof = sub.sum(1).astype(float)
-    if prof.max() <= 0:
-        return
-    main = np.flatnonzero(prof > 0.35 * prof.max())
-    body = np.flatnonzero(prof > 0.04 * prof.max())
-    baseline = top + int(main[-1]) + 1
-    asc = baseline - (top + int(body[0]))
-    line["baseline"] = baseline
-    line["x_height"] = int(main[-1] - main[0] + 1)
-    line["cap_height"] = int(asc)
-    line["size_px"] = round(asc / 0.72, 1)              # ascenders and capitals reach ~0.72 em
+    cjk = [wd for wd in line["words"] if any(cjk_letter(c) for c in wd["text"])]
+    frame = cjk_frame(ink, cjk) if cjk else None
+    if frame:
+        top, _, baseline, size = frame
+        asc = baseline - top
+        line["baseline"] = baseline
+        line["cap_height"] = int(asc)
+        line["size_px"] = round(size, 1)
+    else:
+        pad = max(2, (y1 - y0) // 6)
+        top = max(y0 - pad, 0)
+        sub = ink[top:y1 + pad, x0:x1]
+        prof = sub.sum(1).astype(float)
+        if prof.max() <= 0:
+            return
+        main = np.flatnonzero(prof > 0.35 * prof.max())
+        body = np.flatnonzero(prof > 0.04 * prof.max())
+        baseline = top + int(main[-1]) + 1
+        asc = baseline - (top + int(body[0]))
+        line["baseline"] = baseline
+        line["x_height"] = int(main[-1] - main[0] + 1)
+        line["cap_height"] = int(asc)
+        line["size_px"] = round(asc / 0.72, 1)          # ascenders and capitals reach ~0.72 em
     for wd in line["words"]:
+        if wd.get("cell"):
+            continue                                     # already measured on the ink (cjk_cells)
         wx0, _, wx1, _ = wd["box"]
         cols = np.flatnonzero(ink[baseline - asc:baseline + 2, wx0:wx1].any(0))
         if len(cols):
             wd["box"] = [wx0 + int(cols[0]), wd["box"][1], wx0 + int(cols[-1]) + 1, wd["box"][3]]
-        word_ink = ink[max(baseline - asc, 0):baseline + 2, wd["box"][0]:wd["box"][2]]
-        if word_ink.sum() > 10:                          # mean stroke width = 2 * area / edge length
-            edges = (word_ink[1:] != word_ink[:-1]).sum() + (word_ink[:, 1:] != word_ink[:, :-1]).sum()
-            edges += word_ink[0].sum() + word_ink[-1].sum() + word_ink[:, 0].sum() + word_ink[:, -1].sum()
-            wd["weight"] = float(2 * word_ink.sum() / max(edges, 1) / max(line["size_px"], 1))
+        if wd in cjk:
+            continue                                     # CJK strokes say nothing about Latin bold
+        weight = stroke_weight(ink[max(baseline - asc, 0):baseline + 2, wd["box"][0]:wd["box"][2]], line["size_px"])
+        if weight is not None:
+            wd["weight"] = weight
+    if frame:
+        line["italic"] = False
+        return
     band = ink[max(baseline - line["x_height"], 0):baseline, x0:x1]
     line["italic"] = bool(is_italic(band.astype(np.float32)))
 
@@ -272,13 +405,15 @@ def mark_bold(lines):
             l["bold"] = False
 
 
-def run_tesseract(image_path: Path, psm: int, scale: float = 1.0):
+def run_tesseract(image_path: Path, psm: int, scale: float = 1.0, lang: str | None = None):
     if not shutil.which("tesseract"):
         sys.exit("probe.py needs the `tesseract` command (brew install tesseract / apt install tesseract-ocr)")
-    res = subprocess.run(["tesseract", str(image_path), "-", "--psm", str(psm), "tsv"],
+    res = subprocess.run(["tesseract", str(image_path), "-", "--psm", str(psm), *(["-l", lang] if lang else []), "tsv"],
                          capture_output=True, text=True)
     if res.returncode:
-        sys.exit(f"tesseract failed: {res.stderr.strip()}")
+        hint = (f" (is every language of --lang {lang} installed? `tesseract --list-langs` lists them; "
+                "brew install tesseract-lang / apt install tesseract-ocr-chi-sim)") if lang else ""
+        sys.exit(f"tesseract failed: {res.stderr.strip()}{hint}")
     words = []
     for r in csv.DictReader(io.StringIO(res.stdout), delimiter="\t", quoting=csv.QUOTE_NONE):
         if r["level"] != "5" or not r["text"].strip():
@@ -287,6 +422,25 @@ def run_tesseract(image_path: Path, psm: int, scale: float = 1.0):
         words.append({"text": r["text"], "conf": round(float(r["conf"]), 1), "box": [x, y, x + w, y + h],
                       "key": (r["block_num"], r["par_num"], r["line_num"]), "pass": f"psm{psm}"})
     return words
+
+
+def cjk_lang(lang):
+    """True when --lang includes a Chinese or Japanese model (chi_sim, chi_tra, jpn, script/HanS...)."""
+    return bool(lang) and any(p.split("/")[-1].startswith(("chi_", "jpn", "Han", "Japanese")) for p in lang.split("+"))
+
+
+def cjk_ocr_scale(im, path, lang):
+    """The enlargement to OCR a page with Chinese or Japanese at. Tesseract's models for them read
+    characters of about 25-45 px and fail above about 60 px (enlarging 200 dpi print twice, as
+    for Latin text, ruins it), so one pass at the page's own size measures its characters and the
+    scale (0.5 to 2) brings them to about 36 px. Writes `path` as a by-product."""
+    im.save(path, compress_level=1)
+    hs = [w["box"][3] - w["box"][1] for w in run_tesseract(path, 3, 1.0, lang)
+          if w["conf"] >= 60 and cjk_word(w["text"]) and any(cjk_letter(c) for c in w["text"])]
+    if len(hs) < 5:
+        return 2.0                                    # too small to read at this size, or no CJK text
+    em = float(np.median(hs)) / (CJK_ASCENT + CJK_DESCENT)
+    return min((0.5, 0.75, 1.0, 1.5, 2.0), key=lambda s: abs(np.log(em * s / 36)))
 
 
 def overlaps(a, b):
@@ -317,24 +471,28 @@ def group_lines(words):
     return lines
 
 
-def ocr(image_path: Path, ink=None, scale: float = 1.0):
+def ocr(image_path: Path, ink=None, scale: float = 1.0, lang: str | None = None, text_ink=None):
     """Two OCR passes: full layout (psm 3), then sparse text (psm 11) for what the first pass missed,
-    such as table cells, chart labels and words inside boxes. Pieces of drawings are dropped."""
-    first = run_tesseract(image_path, 3, scale)
+    such as table cells, chart labels and words inside boxes. Pieces of drawings are dropped.
+    `lang` is Tesseract's -l (default: its own, English). With `text_ink` (ink without rules),
+    the loose boxes Tesseract gives Chinese and Japanese characters are redrawn from the ink."""
+    first = run_tesseract(image_path, 3, scale, lang)
     first = [w for w in first if any(c.isalnum() for c in w["text"]) or w["conf"] > 60]
     junk = JunkFilter(ink, first) if ink is not None else (lambda w: False)
     first = [w for w in first if not junk(w)]
-    second = [w for w in run_tesseract(image_path, 11, scale) if any(c.isalnum() for c in w["text"]) and not junk(w)]
+    by_key = {}
+    for w in first:
+        by_key.setdefault(w["key"], []).append(w)
+    for words in by_key.values():                    # before the passes are matched up by box
+        cjk_cells(words, text_ink)
+    second = [w for w in run_tesseract(image_path, 11, scale, lang) if any(c.isalnum() for c in w["text"]) and not junk(w)]
     for f in first:                                  # a doubtful word: take the sparse pass's reading if it is surer
-        if f["conf"] < 60:
+        if f["conf"] < 60 and not f.get("cell"):     # (not for CJK cells: the other pass's boxes drift)
             alt = [w for w in second if overlaps(w["box"], f["box"]) and w["conf"] >= max(60, f["conf"] + 20)]
             if len(alt) == 1:
                 f.update(text=alt[0]["text"], conf=alt[0]["conf"], box=alt[0]["box"], **{"pass": "psm11"})
     extra = [w for w in second if w["conf"] >= 45 and not any(overlaps(w["box"], f["box"]) for f in first)]
-    by_key = {}
-    for w in first:
-        by_key.setdefault(w["key"], []).append(w)
-    groups = list(by_key.values()) + group_lines(extra)
+    groups = list(by_key.values()) + [cjk_cells(g, text_ink) for g in group_lines(extra)]
     out = []
     for words in groups:
         words.sort(key=lambda w: w["box"][0])
@@ -342,17 +500,26 @@ def ocr(image_path: Path, ink=None, scale: float = 1.0):
             w.pop("key", None)
             if w["text"] == "|" and len(words) > 1:
                 w["text"] = "I"                      # a sans-serif capital I, not a bar
-        plain = [w for w in words if not (set(w["text"]) & DESCENDERS)] or words
-        baseline = int(np.median([w["box"][3] for w in plain]))
-        tops = [w["box"][1] for w in words if any(c.isupper() or c.isdigit() or c in "bdfhklt" for c in w["text"])]
-        cap = baseline - (int(np.median(tops)) if tops else min(w["box"][1] for w in words))
+        cjk = [w for w in words if cjk_word(w["text"]) and any(cjk_letter(c) for c in w["text"])]
+        if cjk:                                      # Han characters: ink from CJK_ASCENT above the
+            top = int(np.median([w["box"][1] for w in cjk]))           # baseline to CJK_DESCENT below
+            bottom = int(np.median([w["box"][3] for w in cjk]))
+            size = (bottom - top) / (CJK_ASCENT + CJK_DESCENT)
+            baseline = int(round(bottom - CJK_DESCENT * size))
+            cap = baseline - top
+        else:
+            plain = [w for w in words if not (set(w["text"]) & DESCENDERS)] or words
+            baseline = int(np.median([w["box"][3] for w in plain]))
+            tops = [w["box"][1] for w in words if any(c.isupper() or c.isdigit() or c in "bdfhklt" for c in w["text"])]
+            cap = baseline - (int(np.median(tops)) if tops else min(w["box"][1] for w in words))
+            size = cap / 0.70                        # typical cap height is ~0.70 of the font size
         out.append({
-            "text": " ".join(w["text"] for w in words),
+            "text": join_words(words),
             "box": [min(w["box"][0] for w in words), min(w["box"][1] for w in words),
                     max(w["box"][2] for w in words), max(w["box"][3] for w in words)],
             "baseline": baseline,
             "cap_height": cap,
-            "size_px": round(cap / 0.70, 1),       # typical cap height is ~0.70 of the font size
+            "size_px": round(size, 1),
             "min_conf": min(w["conf"] for w in words),
             "words": words,
         })
@@ -427,8 +594,10 @@ def small_shapes(ink, size_px, lines=()):
     lab, n = ndi.label(ink)
     boxes, circles = [], []
     lo, hi = max(10, int(size_px * 0.55)), int(size_px * 1.6)
+    # words read with confidence keep their ink, including single Han characters such as 国 or
+    # 田, which are drawn as a box outline
     words = [w["box"] for l in lines for w in l["words"]
-             if w["conf"] >= 60 and sum(c.isalnum() for c in w["text"]) >= 2]
+             if w["conf"] >= 60 and (sum(c.isalnum() for c in w["text"]) >= 2 or any(cjk_letter(c) for c in w["text"]))]
 
     def inside_word(x0, y0, x1, y1):
         return any(b[0] - 2 <= x0 and x1 <= b[2] + 2 and b[1] - 2 <= y0 and y1 <= b[3] + 2 for b in words)
@@ -476,7 +645,7 @@ def drop_words_on_shapes(lines, shapes):
         keep = [w for w in l["words"] if not (covered(w["box"]) and len(w["text"]) <= 4)]
         if keep:
             l["words"] = keep
-            l["text"] = " ".join(w["text"] for w in keep)
+            l["text"] = join_words(keep)
             l["box"] = [min(w["box"][0] for w in keep), l["box"][1], max(w["box"][2] for w in keep), l["box"][3]]
             out.append(l)
     return out
@@ -485,7 +654,9 @@ def drop_words_on_shapes(lines, shapes):
 class JunkFilter:
     """Recognise OCR 'words' that are pieces of drawings: slivers read off thin lines, tall
     stacks read down a column of list numbers, and doubtful words whose ink is part of a
-    larger shape (an ellipse read as "Ce", an arrowhead read as "V", a chart marker as "e")."""
+    larger shape (an ellipse read as "Ce", an arrowhead read as "V", a chart marker as "e").
+    Han characters are judged leniently: Tesseract boxes them loosely (a box a character off,
+    or two lines tall), and some are thin by nature (一)."""
 
     def __init__(self, ink, words):
         self.lab, _ = ndi.label(ink, np.ones((3, 3), bool))
@@ -496,9 +667,10 @@ class JunkFilter:
     def __call__(self, w):
         x0, y0, x1, y1 = w["box"]
         h, wd = y1 - y0, x1 - x0
-        if h < max(6, 0.25 * self.typical):
+        cjk = any(cjk_letter(c) for c in w["text"])
+        if h < max(6, 0.25 * self.typical) and not (cjk and w["conf"] >= 60):
             return True                                        # a sliver of a rule or dotted line
-        if h > 1.8 * self.typical and (h > 1.5 * wd or w["conf"] < 80):
+        if h > 1.8 * self.typical and (h > 1.5 * wd or w["conf"] < 80) and not (cjk and w["conf"] >= 80):
             return True                                        # a column of numbers or a whole shape
         if min(h, wd) > 0.6 * self.typical and (self.lab[y0:y1, x0:x1] > 0).mean() > 0.65:
             return True                                        # a solid block (legend swatch, bar end)
@@ -510,7 +682,7 @@ class JunkFilter:
             return False
         sl = self.objs[int(ids[np.argmax(counts)]) - 1]
         over = max(x0 - sl[1].start, sl[1].stop - x1, y0 - sl[0].start, sl[0].stop - y1)
-        return over > max(h, 20)                               # its ink runs on into a larger drawing
+        return over > (max(2 * h, 40) if cjk else max(h, 20))  # its ink runs on into a larger drawing
 
 
 def drawing_strokes(ink, rule_mask):
@@ -537,7 +709,7 @@ def drawing_strokes(ink, rule_mask):
 def relayout(line, words):
     line = dict(line)
     line["words"] = words
-    line["text"] = " ".join(w["text"] for w in words)
+    line["text"] = join_words(words)
     line["box"] = [min(w["box"][0] for w in words), min(w["box"][1] for w in words),
                    max(w["box"][2] for w in words), max(w["box"][3] for w in words)]
     return line
@@ -638,8 +810,10 @@ def preview(img, data, path):
     im.save(path)
 
 
-def probe_page(scan: Path, out: Path, width: int = 0, no_deskew: bool = False, paper: str = "auto") -> dict:
-    """Measure one page; writes deskewed.png, ocr-input.png, probe.json and preview.png to `out`."""
+def probe_page(scan: Path, out: Path, width: int = 0, no_deskew: bool = False, paper: str = "auto",
+               lang: str | None = None) -> dict:
+    """Measure one page; writes deskewed.png, ocr-input.png, probe.json and preview.png to `out`.
+    `lang` is Tesseract's -l, e.g. "chi_sim+eng" (default: Tesseract's own, English)."""
     out.mkdir(parents=True, exist_ok=True)
     rgb = np.asarray(Image.open(scan).convert("RGB")).astype(np.float32)
     quad = None if no_deskew else find_page_quad(rgb)
@@ -667,9 +841,10 @@ def probe_page(scan: Path, out: Path, width: int = 0, no_deskew: bool = False, p
     ocr_img[rule_mask | drawing_strokes(ink, rule_mask)] = 255   # rules and drawn outlines confuse OCR
     ocr_path = out / "ocr-input.png"            # at twice the size: Tesseract reads small print far better
     im = Image.fromarray(ocr_img.astype(np.uint8))
-    im.resize((2 * w, 2 * h), Image.LANCZOS).save(ocr_path, compress_level=1)
-    lines = ocr(ocr_path.resolve(), ink, scale=2.0)
+    scale = cjk_ocr_scale(im, ocr_path, lang) if cjk_lang(lang) else 2.0
+    im.resize((round(scale * w), round(scale * h)), Image.LANCZOS).save(ocr_path, compress_level=1)
     text_ink = ink & ~rule_mask                     # underlines must not pull baselines down
+    lines = ocr(ocr_path.resolve(), ink, scale=scale, lang=lang, text_ink=text_ink)
     sizes = [l["box"][3] - l["box"][1] for l in lines] or [30]
     checkboxes, circles = small_shapes(text_ink, float(np.median(sizes)), lines)
     lines = drop_words_on_shapes(lines, checkboxes + circles)
@@ -687,7 +862,10 @@ def probe_page(scan: Path, out: Path, width: int = 0, no_deskew: bool = False, p
         "photo_aspect": getattr(flatten, "info", None) if quad else None,
         "paper_rgb": [int(c) for c in paper],
         "page": guess_page(w, h),
-        "coordinates": "pixels of deskewed.png; x right, y down; text y = baseline; size_px = font size",
+        "lang": lang,
+        "ocr_scale": scale,
+        "coordinates": "pixels of deskewed.png; x right, y down; text y = baseline; size_px = font size; "
+                       "a word with \"cell\" (CJK) has its characters' advance as box, not their ink",
         "lines": lines,
         "rules": rule_list,
         "colour_regions": colour_regions(rgb, max(80, (w * h) // 20000)),
@@ -717,10 +895,12 @@ def main() -> int:
                          + ", ".join(PAPER))
     ap.add_argument("--width", type=int, default=0,
                     help="resample the page to this width in px (default: keep; photos become 1700)")
+    ap.add_argument("--lang", help="Tesseract languages, passed as -l, e.g. chi_sim+eng (experimental for "
+                                   "Chinese; needs that traineddata). Default: Tesseract's own, English")
     args = ap.parse_args()
     if ndi is None:
         sys.exit("probe.py needs scipy for line and region detection (pip install scipy)")
-    data = probe_page(args.scan, args.out, args.width, args.no_deskew, args.paper)
+    data = probe_page(args.scan, args.out, args.width, args.no_deskew, args.paper, args.lang)
     print(json.dumps({"out": str(args.out), "skew_deg": data["skew_deg"], "page": data["page"],
                       "photo": bool(data["page_quad_in_source"]), **data["summary"]}, indent=1))
     return 0

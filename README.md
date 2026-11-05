@@ -236,14 +236,14 @@ The scorer ([`bench/score.py`](bench/score.py)) aligns each rebuilt page with th
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-The tests generate synthetic pages and PDFs on the fly and need no real books. The draft tests need `tesseract` and are skipped without it.
+The tests generate synthetic pages and PDFs on the fly and need no real books. The draft tests need `tesseract` and are skipped without it; the Chinese one also needs Tesseract's `chi_sim` data.
 
 ## Limits
 
 - This is a workflow for an agent, not a one-click converter. Rebuilding takes minutes per page and costs model time.
 - An audit passing does not mean the content is right; the skill requires review against the source.
 - The benchmark is synthetic: printed English pages with a known ground truth. Handwriting and dense engravings are harder.
-- OCR runs Tesseract's English model only. The scripts have no language option, so installing Tesseract language packs changes nothing. Pages in other scripts, Chinese included, are not supported yet. The rebuilt text is also set in the standard PDF fonts (Times, Helvetica, Courier), which have no CJK glyphs.
+- OCR uses Tesseract's English model unless you pass `--lang` to `draft.py` or `probe.py`. **Chinese support is experimental and not part of the benchmark.** With Tesseract's `chi_sim` data installed (`brew install tesseract-lang` or `sudo apt install tesseract-ocr-chi-sim`), `--lang chi_sim+eng` reads printed, horizontal simplified Chinese, along with any English mixed in. The rebuilt Chinese is set in Droid Sans Fallback, embedded and subset, with no spaces between characters, and the comparison with the scan counts it character by character. It has been tested on synthetic pages only. All Chinese is set in that one sans face, without bold or italic; `c.add_font(name, path, fallback=True)` can swap in a closer face. Vertical text is not supported. Traditional Chinese (`chi_tra`) and Japanese (`jpn`) are untested, as are other `--lang` values, which go to Tesseract unchanged.
 - Retained photographs or engravings make the result a mixed-content PDF, and the delivery note says so.
 - Deleting sources or publishing results happens only when you ask. The skill grants no such permission by itself.
 
